@@ -1,5 +1,5 @@
 import type { SuitCard } from "./card.js";
-import { SUITS, SUIT_RANKS } from "./suit.js";
+import { SUIT_RANKS_BY_SUIT, SUITS } from "./suit.js";
 
 export const SUIT_CATALOG: readonly SuitCard[] = [
   { kind: "suit", suit: "hearts", rank: "king" },
@@ -22,19 +22,22 @@ export const SUIT_CATALOG: readonly SuitCard[] = [
   { kind: "suit", suit: "clubs", rank: "queen" },
   { kind: "suit", suit: "clubs", rank: "cavalier" },
   { kind: "suit", suit: "clubs", rank: "jack" },
-  { kind: "suit", suit: "clubs", rank: "ace" },
-  { kind: "suit", suit: "clubs", rank: "two" },
-  { kind: "suit", suit: "clubs", rank: "three" },
-  { kind: "suit", suit: "clubs", rank: "four" },
+  { kind: "suit", suit: "clubs", rank: "ten" },
+  { kind: "suit", suit: "clubs", rank: "nine" },
+  { kind: "suit", suit: "clubs", rank: "eight" },
+  { kind: "suit", suit: "clubs", rank: "seven" },
   { kind: "suit", suit: "spades", rank: "king" },
   { kind: "suit", suit: "spades", rank: "queen" },
   { kind: "suit", suit: "spades", rank: "cavalier" },
   { kind: "suit", suit: "spades", rank: "jack" },
-  { kind: "suit", suit: "spades", rank: "ace" },
-  { kind: "suit", suit: "spades", rank: "two" },
-  { kind: "suit", suit: "spades", rank: "three" },
-  { kind: "suit", suit: "spades", rank: "four" },
+  { kind: "suit", suit: "spades", rank: "ten" },
+  { kind: "suit", suit: "spades", rank: "nine" },
+  { kind: "suit", suit: "spades", rank: "eight" },
+  { kind: "suit", suit: "spades", rank: "seven" },
 ];
 
 /** Ensures the suit catalog stays aligned with the declared suit and rank sets. */
-export const EXPECTED_SUIT_CATALOG_SIZE = SUITS.length * SUIT_RANKS.length;
+export const EXPECTED_SUIT_CATALOG_SIZE = SUITS.reduce(
+  (count, suit) => count + SUIT_RANKS_BY_SUIT[suit].length,
+  0,
+);

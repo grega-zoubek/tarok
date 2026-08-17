@@ -1,8 +1,23 @@
 export type { Rng } from "./rng/rng.js";
 export { createSeededRng, nextInt } from "./rng/rng.js";
 
-export { SUITS, SUIT_RANKS } from "./cards/suit.js";
-export type { Suit, SuitRank } from "./cards/suit.js";
+export {
+  BLACK_SUIT_RANKS,
+  BLACK_SUITS,
+  RED_SUIT_RANKS,
+  RED_SUITS,
+  SUIT_RANKS_BY_SUIT,
+  SUITS,
+} from "./cards/suit.js";
+export type {
+  BlackSuit,
+  BlackSuitRank,
+  RedSuit,
+  RedSuitRank,
+  Suit,
+  SuitRank,
+  SuitRankFor,
+} from "./cards/suit.js";
 
 export {
   NUMBERED_TAROK_NAMES,

@@ -5,6 +5,7 @@ import {
   isSuitCard,
   isTarokCard,
 } from "../src/cards/card.js";
+import { SUIT_RANKS_BY_SUIT, SUITS } from "../src/cards/suit.js";
 import {
   EXPECTED_DECK_SIZE,
   EXPECTED_SUIT_COUNT,
@@ -49,6 +50,19 @@ describe("deck catalog", () => {
   it("defines explicit catalogs of the expected sizes", () => {
     expect(TAROK_CATALOG).toHaveLength(EXPECTED_TAROK_COUNT);
     expect(SUIT_CATALOG).toHaveLength(EXPECTED_SUIT_CATALOG_SIZE);
+  });
+
+  it("contains the correct eight ranks for every suit", () => {
+    const deck = createTarokDeck();
+
+    for (const suit of SUITS) {
+      const ranks = deck
+        .filter((card) => isSuitCard(card) && card.suit === suit)
+        .map((card) => card.rank)
+        .sort();
+
+      expect(ranks).toEqual([...SUIT_RANKS_BY_SUIT[suit]].sort());
+    }
   });
 
   it("contains exactly one Pagat as Tarok I", () => {

@@ -1,4 +1,4 @@
-import type { Suit, SuitRank } from "./suit.js";
+import type { Suit, SuitRankFor } from "./suit.js";
 
 export const NUMBERED_TAROK_NAMES = {
   1: "pagat",
@@ -50,11 +50,14 @@ export type SkisTarokCard = {
 
 export type TarokCard = NumberedTarokCard | SkisTarokCard;
 
+/** Keeps each suit tied to the ranks that exist in the physical Tarok deck. */
 export type SuitCard = {
-  kind: "suit";
-  suit: Suit;
-  rank: SuitRank;
-};
+  [SuitName in Suit]: {
+    kind: "suit";
+    suit: SuitName;
+    rank: SuitRankFor<SuitName>;
+  };
+}[Suit];
 
 export type Card = TarokCard | SuitCard;
 
