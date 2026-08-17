@@ -90,3 +90,18 @@ export {
   playCard,
 } from "./trick/trick.js";
 export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";
+
+export {
+  beginNextTrick,
+  createTrickRound,
+  getCurrentPlayer,
+  isTrickComplete,
+  playTurn,
+  resolveTrick,
+} from "./game/trick-round.js";
+export type {
+  PlayerHand,
+  ResolvedTrick,
+  TrickRound,
+  TrickRoundConfig,
+} from "./game/trick-round.js";
