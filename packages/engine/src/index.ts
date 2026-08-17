@@ -87,5 +87,6 @@ export {
   getLegalPlays,
   getTrickWinner,
   isLegalPlay,
+  playCard,
 } from "./trick/trick.js";
 export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";

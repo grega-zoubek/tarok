@@ -8,6 +8,7 @@ import {
   getLegalPlays,
   getTrickWinner,
   isLegalPlay,
+  playCard,
 } from "../src/trick/trick.js";
 
 const pagat = TAROK_CATALOG.find((card) => card.name === "pagat")!;
@@ -160,5 +161,33 @@ describe("trick model", () => {
     const hand = [heartKing];
 
     expect(isLegalPlay(hand, createTrick(0), pagat)).toBe(false);
+  });
+
+  it("adds a legal play without mutating the hand or trick", () => {
+    const hand = [heartKing, pagat];
+    const trick = createTrick(0);
+
+    const nextTrick = playCard(hand, trick, { playerId: 0, card: heartKing });
+
+    expect(hand).toEqual([heartKing, pagat]);
+    expect(trick.plays).toEqual([]);
+    expect(nextTrick.plays).toEqual([{ playerId: 0, card: heartKing }]);
+  });
+
+  it("rejects a card that is not legal for the trick", () => {
+    const trick = addPlay(createTrick(0), { playerId: 0, card: heartQueen });
+    const hand = [heartKing, pagat];
+
+    expect(() => playCard(hand, trick, { playerId: 1, card: pagat })).toThrow(
+      "Player 1 cannot legally play tarok:1:pagat",
+    );
+  });
+
+  it("rejects a card the player does not hold", () => {
+    const hand = [heartKing];
+
+    expect(() => playCard(hand, createTrick(0), { playerId: 0, card: pagat })).toThrow(
+      "Player 0 cannot legally play tarok:1:pagat",
+    );
   });
 });

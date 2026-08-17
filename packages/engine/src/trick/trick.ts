@@ -150,3 +150,19 @@ export function isLegalPlay(
     getLegalPlays(hand, trick).some((legalCard) => cardKey(legalCard) === key)
   );
 }
+
+/**
+ * Adds a card to a trick only when it is held and legal to play. Hand updates
+ * belong to the game-state layer, which will be introduced separately.
+ */
+export function playCard(
+  hand: readonly Card[],
+  trick: Trick,
+  play: PlayedCard,
+): Trick {
+  if (!isLegalPlay(hand, trick, play.card)) {
+    throw new RangeError(`Player ${play.playerId} cannot legally play ${cardKey(play.card)}`);
+  }
+
+  return addPlay(trick, play);
+}
