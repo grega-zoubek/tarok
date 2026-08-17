@@ -109,3 +109,44 @@ export function getTrickWinner(trick: Trick): PlayedCard {
       suitStrength(candidate.card) > suitStrength(winner.card) ? candidate : winner,
     );
 }
+
+/**
+ * Returns the cards a player may play in a normal positive Tarok contract.
+ * Negative contracts and their forced-overtrumping rules are intentionally
+ * modelled separately when those contracts are introduced.
+ */
+export function getLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
+  const [lead] = trick.plays;
+  if (lead === undefined) {
+    return [...hand];
+  }
+
+  if (isTarokCard(lead.card)) {
+    const taroks = hand.filter(isTarokCard);
+    return taroks.length > 0 ? taroks : [...hand];
+  }
+
+  const ledSuit = lead.card.suit;
+  const matchingSuit = hand.filter(
+    (card): card is SuitCard =>
+      isSuitCard(card) && card.suit === ledSuit,
+  );
+  if (matchingSuit.length > 0) {
+    return matchingSuit;
+  }
+
+  const taroks = hand.filter(isTarokCard);
+  return taroks.length > 0 ? taroks : [...hand];
+}
+
+export function isLegalPlay(
+  hand: readonly Card[],
+  trick: Trick,
+  card: Card,
+): boolean {
+  const key = cardKey(card);
+  return (
+    hand.some((handCard) => cardKey(handCard) === key) &&
+    getLegalPlays(hand, trick).some((legalCard) => cardKey(legalCard) === key)
+  );
+}

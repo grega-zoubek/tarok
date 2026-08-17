@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { SUIT_CATALOG } from "../src/cards/suit-catalog.js";
 import { TAROK_CATALOG } from "../src/cards/tarok-catalog.js";
-import { addPlay, createTrick, getTrickWinner } from "../src/trick/trick.js";
+import {
+  addPlay,
+  createTrick,
+  getLegalPlays,
+  getTrickWinner,
+  isLegalPlay,
+} from "../src/trick/trick.js";
 
 const pagat = TAROK_CATALOG.find((card) => card.name === "pagat")!;
 const mond = TAROK_CATALOG.find((card) => card.name === "mond")!;
@@ -110,5 +116,49 @@ describe("trick model", () => {
     expect(() => getTrickWinner(createTrick(0))).toThrow(
       "Cannot determine a winner for an empty trick",
     );
+  });
+
+  it("allows every card when leading a trick", () => {
+    const hand = [heartKing, pagat, clubSeven];
+
+    expect(getLegalPlays(hand, createTrick(0))).toEqual(hand);
+    expect(getLegalPlays(hand, createTrick(0))).not.toBe(hand);
+  });
+
+  it("requires following the led suit when possible", () => {
+    const trick = addPlay(createTrick(0), { playerId: 0, card: heartQueen });
+    const hand = [heartKing, pagat, clubKing];
+
+    expect(getLegalPlays(hand, trick)).toEqual([heartKing]);
+    expect(isLegalPlay(hand, trick, heartKing)).toBe(true);
+    expect(isLegalPlay(hand, trick, pagat)).toBe(false);
+  });
+
+  it("requires a tarok when the led suit is unavailable", () => {
+    const trick = addPlay(createTrick(0), { playerId: 0, card: heartQueen });
+    const hand = [pagat, clubKing];
+
+    expect(getLegalPlays(hand, trick)).toEqual([pagat]);
+  });
+
+  it("allows every card when neither the led suit nor a tarok is held", () => {
+    const trick = addPlay(createTrick(0), { playerId: 0, card: heartQueen });
+    const hand = [clubKing, clubSeven];
+
+    expect(getLegalPlays(hand, trick)).toEqual(hand);
+  });
+
+  it("requires a tarok in response to a tarok lead when possible", () => {
+    const trick = addPlay(createTrick(0), { playerId: 0, card: mond });
+    const hand = [pagat, clubKing];
+
+    expect(getLegalPlays(hand, trick)).toEqual([pagat]);
+    expect(isLegalPlay(hand, trick, clubKing)).toBe(false);
+  });
+
+  it("does not allow a card that is not held", () => {
+    const hand = [heartKing];
+
+    expect(isLegalPlay(hand, createTrick(0), pagat)).toBe(false);
   });
 });

@@ -81,5 +81,11 @@ export type {
   SupportedPlayerCount,
 } from "./deal/deal.js";
 
-export { addPlay, createTrick, getTrickWinner } from "./trick/trick.js";
+export {
+  addPlay,
+  createTrick,
+  getLegalPlays,
+  getTrickWinner,
+  isLegalPlay,
+} from "./trick/trick.js";
 export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";
