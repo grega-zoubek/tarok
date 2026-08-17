@@ -94,12 +94,14 @@ export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";
 export {
   beginNextTrick,
   createTrickRound,
+  getCapturedTricks,
   getCurrentPlayer,
   isTrickComplete,
   playTurn,
   resolveTrick,
 } from "./game/trick-round.js";
 export type {
+  CapturedTrick,
   PlayerHand,
   ResolvedTrick,
   TrickRound,

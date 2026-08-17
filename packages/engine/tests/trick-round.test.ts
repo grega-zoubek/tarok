@@ -5,6 +5,7 @@ import { TAROK_CATALOG } from "../src/cards/tarok-catalog.js";
 import {
   beginNextTrick,
   createTrickRound,
+  getCapturedTricks,
   getCurrentPlayer,
   isTrickComplete,
   playTurn,
@@ -79,5 +80,20 @@ describe("trick round", () => {
     const nextRound = beginNextTrick(round);
     expect(nextRound.currentTrick).toEqual({ leader: 3, plays: [] });
     expect(getCurrentPlayer(nextRound)).toBe(3);
+    expect(round.capturedTricks).toEqual([]);
+    expect(getCapturedTricks(nextRound, 3)).toEqual([
+      {
+        winner: 3,
+        trick: {
+          leader: 0,
+          plays: [
+            { playerId: 0, card: heartQueen },
+            { playerId: 1, card: heartKing },
+            { playerId: 2, card: clubKing },
+            { playerId: 3, card: pagat },
+          ],
+        },
+      },
+    ]);
   });
 });

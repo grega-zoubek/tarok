@@ -19,12 +19,16 @@ export interface TrickRound {
   readonly playerOrder: readonly PlayerId[];
   readonly hands: readonly PlayerHand[];
   readonly currentTrick: Trick;
+  readonly capturedTricks: readonly CapturedTrick[];
 }
 
 export interface ResolvedTrick {
   readonly trick: Trick;
   readonly winner: PlayerId;
 }
+
+/** A resolved trick retained for later card-point and bonus calculation. */
+export interface CapturedTrick extends ResolvedTrick {}
 
 export interface TrickRoundConfig {
   readonly playerOrder: readonly PlayerId[];
@@ -42,6 +46,7 @@ export function createTrickRound(config: TrickRoundConfig): TrickRound {
       cards: [...hand.cards],
     })),
     currentTrick: createTrick(config.leader),
+    capturedTricks: [],
   };
 }
 
@@ -108,13 +113,21 @@ export function resolveTrick(round: TrickRound): ResolvedTrick {
   return { trick: round.currentTrick, winner: winningPlay.playerId };
 }
 
+export function getCapturedTricks(
+  round: TrickRound,
+  playerId: PlayerId,
+): CapturedTrick[] {
+  return round.capturedTricks.filter((captured) => captured.winner === playerId);
+}
+
 /** Starts the next trick with the winner of the completed current trick. */
 export function beginNextTrick(round: TrickRound): TrickRound {
-  const { winner } = resolveTrick(round);
+  const resolvedTrick = resolveTrick(round);
 
   return {
     ...round,
-    currentTrick: createTrick(winner),
+    capturedTricks: [...round.capturedTricks, resolvedTrick],
+    currentTrick: createTrick(resolvedTrick.winner),
   };
 }
 
