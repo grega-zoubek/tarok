@@ -1,0 +1,26 @@
+import type { TarokCard } from "./card.js";
+
+export const TAROK_CATALOG: readonly TarokCard[] = [
+  { kind: "tarok", rank: 1, name: "pagat" },
+  { kind: "tarok", rank: 2, name: "ii" },
+  { kind: "tarok", rank: 3, name: "iii" },
+  { kind: "tarok", rank: 4, name: "iv" },
+  { kind: "tarok", rank: 5, name: "v" },
+  { kind: "tarok", rank: 6, name: "vi" },
+  { kind: "tarok", rank: 7, name: "vii" },
+  { kind: "tarok", rank: 8, name: "viii" },
+  { kind: "tarok", rank: 9, name: "ix" },
+  { kind: "tarok", rank: 10, name: "x" },
+  { kind: "tarok", rank: 11, name: "xi" },
+  { kind: "tarok", rank: 12, name: "xii" },
+  { kind: "tarok", rank: 13, name: "xiii" },
+  { kind: "tarok", rank: 14, name: "xiv" },
+  { kind: "tarok", rank: 15, name: "xv" },
+  { kind: "tarok", rank: 16, name: "xvi" },
+  { kind: "tarok", rank: 17, name: "xvii" },
+  { kind: "tarok", rank: 18, name: "xviii" },
+  { kind: "tarok", rank: 19, name: "xix" },
+  { kind: "tarok", rank: 20, name: "xx" },
+  { kind: "tarok", rank: 21, name: "mond" },
+  { kind: "tarok", rank: "skis", name: "skis" },
+];
