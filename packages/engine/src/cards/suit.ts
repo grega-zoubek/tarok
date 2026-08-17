@@ -47,3 +47,18 @@ export type SuitRank = RedSuitRank | BlackSuitRank;
 
 export type SuitRankFor<SuitName extends Suit> =
   (typeof SUIT_RANKS_BY_SUIT)[SuitName][number];
+
+/** Returns the strength of a suit card; king is highest and the final rank is lowest. */
+export function suitStrength(card: {
+  readonly suit: Suit;
+  readonly rank: SuitRank;
+}): number {
+  const ranks = SUIT_RANKS_BY_SUIT[card.suit] as readonly SuitRank[];
+  const index = ranks.indexOf(card.rank);
+
+  if (index === -1) {
+    throw new RangeError(`Rank ${card.rank} does not exist in suit ${card.suit}`);
+  }
+
+  return ranks.length - index;
+}

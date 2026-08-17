@@ -8,6 +8,7 @@ export {
   RED_SUITS,
   SUIT_RANKS_BY_SUIT,
   SUITS,
+  suitStrength,
 } from "./cards/suit.js";
 export type {
   BlackSuit,
@@ -80,5 +81,5 @@ export type {
   SupportedPlayerCount,
 } from "./deal/deal.js";
 
-export { addPlay, createTrick } from "./trick/trick.js";
+export { addPlay, createTrick, getTrickWinner } from "./trick/trick.js";
 export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";
