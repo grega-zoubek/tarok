@@ -276,7 +276,7 @@ function App() {
             {/* Cards on Table */}
             <div className="relative w-full h-full flex items-center justify-center">
               {/* Current trick plays OR Finished trick during processing */}
-              {(isProcessingTrick && lastCapturedTrick ? lastCapturedTrick.trick.plays : gameState.trickRound?.currentTrick.plays || []).map((play: any, idx: number) => {
+              {(isProcessingTrick && lastCapturedTrick ? lastCapturedTrick.trick.plays : (gameState.trickRound?.currentTrick?.plays ?? [])).map((play: any, idx: number) => {
                 const pos = getPlayerPosition(play.playerId);
                 
                 // Define default rotations
@@ -439,86 +439,118 @@ function App() {
         </div>
 
         {/* Round Finished Overlay */}
-        {gameState.phase === "finished" && roundScore && (
+        {gameState.phase === "finished" && roundScore && (() => {
+          // Radlci-only contracts: win/loss is all-or-nothing, no card point difference matters
+          const radlciOnlyContracts = ["berac", "odprti_berac", "barvni_valat", "solo_brez", "valat", "klop"];
+          const isRadlciOnly = radlciOnlyContracts.includes(gameState.contract ?? "");
+          
+          // Build player name list for declarer team
+          const declarerTeamNames = gameState.teams?.declarerTeam
+            .map(pid => playerNames[pid] ?? `Igralec ${pid}`)
+            .join(" + ") ?? "";
+          const defenderTeamNames = gameState.teams?.defendingTeam
+            .map(pid => playerNames[pid] ?? `Igralec ${pid}`)
+            .join(" + ") ?? "";
+
+          return (
           <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-lg">
-             <div className="bg-green-900 p-8 rounded-3xl border-4 border-yellow-500 shadow-[0_0_50px_rgba(234,179,8,0.3)] text-center max-w-lg w-full transform animate-in fade-in zoom-in duration-500">
-                <h2 className={`text-5xl font-black mb-2 uppercase tracking-tighter ${roundScore.isWin ? "text-yellow-400" : "text-red-400"}`}>
+             <div className="bg-green-900 p-6 rounded-3xl border-4 border-yellow-500 shadow-[0_0_50px_rgba(234,179,8,0.3)] text-center max-w-lg w-full overflow-y-auto max-h-[90vh]">
+                <h2 className={`text-5xl font-black mb-1 uppercase tracking-tighter ${roundScore.isWin ? "text-yellow-400" : "text-red-400"}`}>
                   {roundScore.isWin ? "Zmaga! 🏆" : "Poraz! 💔"}
                 </h2>
-                <p className="text-xl text-yellow-100 mb-6 font-serif italic">{gameState.contract?.replace('_', ' ').toUpperCase()}</p>
+                <p className="text-xl text-yellow-100 mb-4 font-serif italic">{gameState.contract?.replace('_', ' ').toUpperCase()}</p>
 
-                {/* Card points */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                   <div className={`p-4 rounded-2xl border-2 ${roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
-                      <span className="block text-xs font-bold text-gray-300 uppercase mb-1">Igralci</span>
+                {/* Card points — only for regular contracts */}
+                {!isRadlciOnly && (
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className={`p-4 rounded-2xl border-2 ${roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
+                      <span className="block text-[10px] font-bold text-gray-300 uppercase mb-1 truncate" title={declarerTeamNames}>{declarerTeamNames}</span>
                       <span className="text-3xl font-black">{roundScore.declarerTeam.cardPoints}</span>
                       <span className="block text-[10px] text-gray-400 mt-1">kart. točk</span>
-                   </div>
-                   <div className={`p-4 rounded-2xl border-2 ${!roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
-                      <span className="block text-xs font-bold text-gray-300 uppercase mb-1">Branilci</span>
+                    </div>
+                    <div className={`p-4 rounded-2xl border-2 ${!roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
+                      <span className="block text-[10px] font-bold text-gray-300 uppercase mb-1 truncate" title={defenderTeamNames}>{defenderTeamNames}</span>
                       <span className="text-3xl font-black">{roundScore.defendingTeam.cardPoints}</span>
                       <span className="block text-[10px] text-gray-400 mt-1">kart. točk</span>
-                   </div>
                 </div>
-
-                {/* Bonuses breakdown */}
-                {roundScore.bonuses.length > 0 && (
-                  <div className="mb-4 bg-black/20 rounded-xl p-3 text-left space-y-1">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Napovedi &amp; bonusi</p>
-                    {roundScore.bonuses.map((b, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className="text-gray-300 capitalize">
-                          {b.announcedBy === "silent" ? "(tiho) " : ""}{b.type.replace("_", " ")}
-                          {b.announcedBy !== "silent" && !b.achieved ? " ✗" : b.achieved ? " ✓" : ""}
-                        </span>
-                        <span className={b.radlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-                          {b.radlci >= 0 ? "+" : ""}{b.radlci}
-                        </span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between text-xs border-t border-white/10 pt-1 mt-1">
-                      <span className="text-gray-300">Pogodba ({gameState.contract?.replace("_"," ")})</span>
-                      <span className={roundScore.contractRadlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-                        {roundScore.contractRadlci >= 0 ? "+" : ""}{roundScore.contractRadlci}
-                      </span>
-                    </div>
                   </div>
                 )}
 
-                {/* Total radlci */}
-                <div className="mb-8 flex flex-col items-center">
+                {/* Bonuses breakdown */}
+                <div className="mb-4 bg-black/20 rounded-xl p-3 text-left space-y-1">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Obračun</p>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-300">Pogodba: {gameState.contract?.replace("_"," ")}</span>
+                    <span className={roundScore.contractRadlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                      {roundScore.contractRadlci >= 0 ? "+" : ""}{roundScore.contractRadlci} radlcev
+                    </span>
+                  </div>
+                  {!isRadlciOnly && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-300">Razlika točk ({roundScore.declarerTeam.cardPoints} – 35)</span>
+                      <span className={roundScore.pointDifference >= 0 ? "text-green-300" : "text-red-300"}>
+                        {roundScore.pointDifference >= 0 ? "+" : ""}{roundScore.pointDifference} točk
+                      </span>
+                    </div>
+                )}
+                  {roundScore.bonuses.map((b, i) => (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="text-gray-300 capitalize">
+                        {b.announcedBy === "silent" ? "🤐 " : b.achieved ? "✅ " : "❌ "}
+                        {b.type.replace(/_/g, " ")}
+                        {b.announcedBy !== "silent" ? ` (${b.announcedBy === "declarer" ? "napoved" : "napoved bran."})` : " (tiho)"}
+                      </span>
+                      <span className={b.radlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                        {b.radlci >= 0 ? "+" : ""}{b.radlci}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total */}
+                <div className="mb-6 flex flex-col items-center">
                    <span className={`text-6xl font-black drop-shadow-lg ${roundScore.totalRadlci >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {roundScore.totalRadlci >= 0 ? `+${roundScore.totalRadlci}` : roundScore.totalRadlci}
                    </span>
-                   <span className="text-sm font-bold text-gray-300 uppercase tracking-widest mt-2">Skupaj radlcev</span>
+                   <span className="text-sm font-bold text-gray-300 uppercase tracking-widest mt-1">Skupaj radlcev</span>
                 </div>
 
                 <button 
                   onClick={nextRound}
-                  className="w-full py-5 bg-yellow-500 text-green-900 font-black text-2xl rounded-2xl shadow-xl hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all"
+                  className="w-full py-4 bg-yellow-500 text-green-900 font-black text-2xl rounded-2xl shadow-xl hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all"
                 >
                   {currentRound < maxRounds ? "NASLEDNJI KROG" : "POGLEDAJ SKUPNI IZID"}
                 </button>
              </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Player Hand Area */}
-        <div className="relative h-64 flex flex-col items-center justify-end">
+        <div className="relative flex flex-col items-center justify-end pb-2">
           <div className={`mb-2 px-6 py-1 rounded-full text-sm font-bold border-2 transition-all ${isMyTurn ? "bg-yellow-400 text-green-900 border-white animate-pulse" : "bg-black/40 text-white/50 border-white/10"}`}>
               {isMyTurn ? "TI SI NA POTEZI" : `ČAKAŠ NA ${playerNames[gameState.currentPlayer!]?.toUpperCase()}`}
           </div>
-          <div className="w-full flex justify-center items-center pb-4">
-            <div className="flex -space-x-12 hover:space-x-2 transition-all duration-300 px-12 group">
+          {/* Scrollable hand — only cards zoom on hover, not the wrapper */}
+          <div className="w-full overflow-x-auto pb-2">
+            <div className="flex justify-center items-end min-w-max mx-auto px-4"
+                 style={{ gap: myHand.length > 10 ? '-20px' : '2px' }}>
               {myHand.map((card, idx) => {
                 const isSelected = selectedDiscards.some(c => JSON.stringify(c) === JSON.stringify(card));
                 return (
-                  <div 
-                    key={idx} 
-                    className={`transition-all duration-200 transform ${isSelected ? "-translate-y-12 rotate-0 scale-110 z-50" : "hover:-translate-y-8 hover:z-40"}`}
+                  <div
+                    key={idx}
+                    style={{ marginLeft: myHand.length > 8 ? '-28px' : '2px' }}
+                    className={`transition-all duration-200 transform flex-shrink-0 ${
+                      isSelected
+                        ? "-translate-y-10 scale-105 z-50 drop-shadow-xl"
+                        : isMyTurn
+                          ? "hover:-translate-y-8 hover:scale-105 hover:z-40 cursor-pointer"
+                          : ""
+                    }`}
                   >
-                    <PlayingCard 
-                      card={card} 
+                    <PlayingCard
+                      card={card}
                       disabled={!isMyTurn}
                       onClick={() => handleCardClick(card)} 
                     />

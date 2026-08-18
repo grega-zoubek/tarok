@@ -120,13 +120,32 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const defendingWonTrula = hasTrula(defendingCollected);
   const defendingWonKings = hasAllKings(defendingCollected);
 
-  const isWin = declarerPoints > 35;
-  const pointDifference = declarerPoints - 35; // negative if lost
+  // Radlci-only contracts: win/loss determined differently
+  // berac/odprti_berac: declarer wins every trick to win
+  // barvni_valat/valat/solo_brez: special win conditions
+  // For card-point contracts (tri/dve/ena/solo_tri/solo_dve/solo_ena): >35 to win
+  const radlciOnlyContracts: Array<Bid | "klop"> = [
+    "berac", "odprti_berac", "barvni_valat", "valat", "solo_brez", "klop"
+  ];
+  const isRadlciOnly = radlciOnlyContracts.includes(state.contract as Bid | "klop");
+
+  // For radlci-only: check if declarer won all tricks (berac = all tricks)
+  // For valat/barvni_valat: all tricks by declarer team
+  let isWin: boolean;
+  if (isRadlciOnly) {
+    const totalTricks = trickRound.capturedTricks.length;
+    const declarerTricks = trickRound.capturedTricks.filter(t =>
+      (teams?.declarerTeam ?? []).includes(t.winner)
+    ).length;
+    isWin = declarerTricks === totalTricks;
+  } else {
+    isWin = declarerPoints > 35;
+  }
+  const pointDifference = declarerPoints - 35; // negative if lost (only meaningful for regular contracts)
 
   // --- 4. Contract radlci ---
   const contract = state.contract as Bid | "klop";
   const contractBase = CONTRACT_VALUES[contract] ?? 10;
-  // Contract doubles if lost (declarer loses the same amount they would have won)
   const contractRadlci = isWin ? contractBase : -contractBase;
 
   // --- 5. Bonuses (napovedi + tihe napovedi) ---

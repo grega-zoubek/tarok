@@ -4,7 +4,8 @@
 
 @layer components {
   .card {
-    @apply w-24 h-36 bg-white border border-gray-300 rounded shadow flex flex-col justify-between p-2 select-none;
+    /* 40% bigger: 96px -> ~134px wide, 144px -> ~202px tall */
+    @apply w-[134px] h-[202px] bg-white border border-gray-300 rounded-lg shadow-md flex flex-col justify-between p-2 select-none;
   }
   
   .card-suit {

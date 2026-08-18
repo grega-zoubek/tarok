@@ -212,22 +212,16 @@ export function useTarokGame() {
             setIsMovingCards(false); // Show cards static first
             setGameState(nextState);
 
-            // Is this the very last trick? (all hands empty after this)
-            const isLastTrick = nextState.phase === "finished" ||
-              (nextState.trickRound?.hands[0]?.cards.length === 0);
-            const holdDuration = isLastTrick ? 3000 : 1000; // 3s for last, 1s otherwise
-            const totalDuration = isLastTrick ? 3000 : 2500;
+            const isLastTrick = nextState.phase === "finished";
+            // Last trick: show 2s static, then 1.5s fly-away animation
+            // Normal trick: show 1s static, then 1.5s fly-away animation
+            const staticHold = isLastTrick ? 2000 : 1000;
 
-            // Step 1: hold — player sees all 4 cards
-            setTimeout(() => {
-              setIsMovingCards(true); // Step 2: animate cards flying to winner
-            }, holdDuration);
-
-            // Step 3: clear
+            setTimeout(() => setIsMovingCards(true), staticHold);
             setTimeout(() => {
               setIsProcessingTrick(false);
               setIsMovingCards(false);
-            }, totalDuration + 1000);
+            }, staticHold + 1500);
           } else {
             setGameState(nextState);
           }
@@ -308,16 +302,14 @@ export function useTarokGame() {
         setIsMovingCards(false);
         setGameState(nextState);
 
-        const isLastTrick = nextState.phase === "finished" ||
-          (nextState.trickRound?.hands[0]?.cards.length === 0);
-        const holdDuration = isLastTrick ? 3000 : 1000;
-        const totalDuration = isLastTrick ? 3000 : 2500;
+        const isLastTrick = nextState.phase === "finished";
+        const staticHold = isLastTrick ? 2000 : 1000;
 
-        setTimeout(() => setIsMovingCards(true), holdDuration);
+        setTimeout(() => setIsMovingCards(true), staticHold);
         setTimeout(() => {
           setIsProcessingTrick(false);
           setIsMovingCards(false);
-        }, totalDuration + 1000);
+        }, staticHold + 1500);
       } else {
         setGameState(nextState);
       }
