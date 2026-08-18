@@ -146,10 +146,10 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
     }
   }
 
-  return {
+  const finalState = {
     ...state,
     phase: nextPhase,
-    currentPlayer: result.contract === "klop" ? state.forehand : result.declarer,
+    currentPlayer: result.contract === "klop" ? state.forehand : (nextPhase === "talon" ? result.declarer : result.declarer),
     bids: nextBiddingRound.bids,
     passedPlayers: nextBiddingRound.passedPlayers,
     contract: result.contract,
@@ -161,6 +161,16 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
       leader: state.forehand,
     }) : undefined,
   };
+
+  // If next phase is talon and we just skipped calling (Solo), ensure current player is declarer
+  if (nextPhase === "talon") {
+      return { ...finalState, currentPlayer: result.declarer };
+  }
+  if (nextPhase === "calling") {
+      return { ...finalState, currentPlayer: result.declarer };
+  }
+
+  return finalState;
 }
 export function dispatchCall(state: GameState, playerId: PlayerId, suit: "hearts" | "spades" | "clubs" | "diamonds" | undefined): GameState {
   if (state.phase !== "calling") {
@@ -190,6 +200,7 @@ export function dispatchCall(state: GameState, playerId: PlayerId, suit: "hearts
   return {
     ...state,
     phase: "talon",
+    currentPlayer: state.declarer, // Ensure declarer stays as current player for talon pick
     calledKing,
     teams,
     talonGroups: talonRound.talonGroups,
@@ -220,6 +231,7 @@ export function dispatchTalonPick(state: GameState, playerId: PlayerId, groupInd
 
   return {
     ...state,
+    currentPlayer: playerId, // Stay as current player for discard phase
     pickedTalonGroupIndex: groupIndex,
     hands: nextHands,
   };

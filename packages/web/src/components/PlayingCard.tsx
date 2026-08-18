@@ -37,7 +37,7 @@ export function PlayingCard({ card, onClick, disabled }: CardProps) {
 
   return (
     <div 
-      className={`card ${colorClass} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:-translate-y-2 transition-transform"}`}
+      className={`card ${colorClass} ${disabled ? "cursor-default" : "cursor-pointer hover:-translate-y-2 transition-transform"}`}
       onClick={!disabled ? onClick : undefined}
     >
       <div className="text-sm">{display}</div>
