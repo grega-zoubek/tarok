@@ -19,7 +19,10 @@ import {
   isTarokCard,
   tarokStrength,
   isSuitCard,
-  suitStrength
+  suitStrength,
+  calculateGameScore,
+  type GameScoreResult,
+  type AnnouncementType
 } from "@tarok/engine";
 import { HeuristicBot, type BotDifficulty } from "@tarok/ai";
 
@@ -57,7 +60,21 @@ export function useTarokGame() {
   // Player 0 is the human
   const HUMAN_PLAYER: PlayerId = 0;
 
-  // ... (sortCards remains same)
+  const sortCards = useCallback((cards: readonly Card[]): Card[] => {
+    if (!cards) return [];
+    const sorted = [...cards];
+    return sorted.sort((a, b) => {
+      if (isTarokCard(a) && !isTarokCard(b)) return -1;
+      if (!isTarokCard(a) && isTarokCard(b)) return 1;
+      if (isTarokCard(a) && isTarokCard(b)) return tarokStrength(b) - tarokStrength(a);
+      if (isSuitCard(a) && isSuitCard(b)) {
+        const suitOrder = { diamonds: 0, clubs: 1, hearts: 2, spades: 3 };
+        if (a.suit !== b.suit) return suitOrder[a.suit] - suitOrder[b.suit];
+        return suitStrength(b) - suitStrength(a);
+      }
+      return 0;
+    });
+  }, []);
 
   // Initialize game
   const startGame = (settings: GameSettings) => {
@@ -105,6 +122,7 @@ export function useTarokGame() {
     setGameState(newState);
     setLastCapturedTrick(null);
     setIsProcessingTrick(false);
+    setIsMovingCards(false);
   };
 
   // Basic game loop hook for bot actions
@@ -317,6 +335,9 @@ export function useTarokGame() {
     isMovingCards,
     currentRound,
     maxRounds: gameSettings?.maxRounds || 0,
+    history,
+    roundScore,
+    nextRound,
     playBid,
     playCall,
     playTalonPick,

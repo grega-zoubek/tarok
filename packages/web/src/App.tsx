@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTarokGame, type BotConfig } from './hooks/useTarokGame';
+import { useTarokGame, type BotConfig, type RoundResult } from './hooks/useTarokGame';
 import { PlayingCard } from './components/PlayingCard';
 import { type Card, type Bid, BIDS, PASS, type PlayerId, ANNOUNCEMENTS, type AnnouncementType } from '@tarok/engine';
 
@@ -29,7 +29,7 @@ function App() {
 
   const [selectedDiscards, setSelectedDiscards] = useState<Card[]>([]);
   const [humanName, setHumanName] = useState("Igralec");
-  const [maxRounds, setMaxRounds] = useState(8);
+  const [setupMaxRounds, setSetupMaxRounds] = useState(8);
   const [botConfigs, setBotConfigs] = useState<BotConfig[]>([
     { name: "Bot 1", difficulty: 3 },
     { name: "Bot 2", difficulty: 3 },
@@ -59,8 +59,8 @@ function App() {
                 {[8, 12, 16].map(num => (
                   <button 
                     key={num}
-                    onClick={() => setMaxRounds(num)}
-                    className={`flex-grow py-2 rounded font-bold border transition-colors ${maxRounds === num ? "bg-yellow-500 text-green-900 border-white" : "bg-green-700 text-yellow-200 border-yellow-600"}`}
+                    onClick={() => setSetupMaxRounds(num)}
+                    className={`flex-grow py-2 rounded font-bold border transition-colors ${setupMaxRounds === num ? "bg-yellow-500 text-green-900 border-white" : "bg-green-700 text-yellow-200 border-yellow-600"}`}
                   >
                     {num}
                   </button>
@@ -106,7 +106,7 @@ function App() {
           </div>
 
           <button 
-            onClick={() => startGame({ humanName, botConfigs, maxRounds })}
+            onClick={() => startGame({ humanName, botConfigs, maxRounds: setupMaxRounds })}
             className="w-full py-4 bg-yellow-500 text-green-900 font-bold rounded-lg shadow-lg hover:bg-yellow-400 text-2xl transition-all hover:scale-105 active:scale-95"
           >
             Igraj!
@@ -172,7 +172,7 @@ function App() {
           {history.length === 0 && (
             <p className="text-xs text-gray-500 italic text-center py-8">Ni odigranih iger.</p>
           )}
-          {history.map((res, i) => (
+          {history.map((res: RoundResult, i: number) => (
             <div key={i} className={`p-3 rounded-lg border flex flex-col gap-1 transition-all hover:scale-[1.02] ${res.winnerTeam === "declarer" ? "bg-green-900/40 border-green-500/30" : "bg-red-900/40 border-red-500/30"}`}>
                <div className="flex justify-between items-center">
                  <span className="text-[10px] font-bold text-gray-400">#KROG {res.round}</span>
