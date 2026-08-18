@@ -41,7 +41,8 @@ export interface RoundResult {
   round: number;
   contract: string;
   declarer: string;
-  points: number;
+  points: number;         // card point difference from 35
+  totalRadlci: number;    // full radlci (contract + bonuses)
   winnerTeam: "declarer" | "defenders";
 }
 
@@ -137,6 +138,7 @@ export function useTarokGame() {
                   contract: gameState.contract || "klop",
                   declarer: gameState.declarer !== undefined ? playerNames[gameState.declarer]! : "Nihče",
                   points: score.pointDifference,
+                  totalRadlci: score.totalRadlci,
                   winnerTeam: score.isWin ? "declarer" : "defenders"
               }]);
           } catch (e) {
@@ -210,16 +212,22 @@ export function useTarokGame() {
             setIsMovingCards(false); // Show cards static first
             setGameState(nextState);
 
-            // Step 1: Wait 1s so player sees the 4th card
-            setTimeout(() => {
-              setIsMovingCards(true); // Step 2: Start animation
-            }, 1000);
+            // Is this the very last trick? (all hands empty after this)
+            const isLastTrick = nextState.phase === "finished" ||
+              (nextState.trickRound?.hands[0]?.cards.length === 0);
+            const holdDuration = isLastTrick ? 3000 : 1000; // 3s for last, 1s otherwise
+            const totalDuration = isLastTrick ? 3000 : 2500;
 
-            // Step 3: Finish processing after animation
+            // Step 1: hold — player sees all 4 cards
+            setTimeout(() => {
+              setIsMovingCards(true); // Step 2: animate cards flying to winner
+            }, holdDuration);
+
+            // Step 3: clear
             setTimeout(() => {
               setIsProcessingTrick(false);
               setIsMovingCards(false);
-            }, 2500);
+            }, totalDuration + 1000);
           } else {
             setGameState(nextState);
           }
@@ -300,14 +308,16 @@ export function useTarokGame() {
         setIsMovingCards(false);
         setGameState(nextState);
 
-        setTimeout(() => {
-          setIsMovingCards(true);
-        }, 1000);
+        const isLastTrick = nextState.phase === "finished" ||
+          (nextState.trickRound?.hands[0]?.cards.length === 0);
+        const holdDuration = isLastTrick ? 3000 : 1000;
+        const totalDuration = isLastTrick ? 3000 : 2500;
 
+        setTimeout(() => setIsMovingCards(true), holdDuration);
         setTimeout(() => {
           setIsProcessingTrick(false);
           setIsMovingCards(false);
-        }, 2500);
+        }, totalDuration + 1000);
       } else {
         setGameState(nextState);
       }

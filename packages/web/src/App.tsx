@@ -176,12 +176,12 @@ function App() {
             <div key={i} className={`p-3 rounded-lg border flex flex-col gap-1 transition-all hover:scale-[1.02] ${res.winnerTeam === "declarer" ? "bg-green-900/40 border-green-500/30" : "bg-red-900/40 border-red-500/30"}`}>
                <div className="flex justify-between items-center">
                  <span className="text-[10px] font-bold text-gray-400">#KROG {res.round}</span>
-                 <span className={`text-xs font-black ${res.points >= 0 ? "text-green-400" : "text-red-400"}`}>
-                   {res.points >= 0 ? `+${res.points}` : res.points}
+                 <span className={`text-xs font-black ${res.totalRadlci >= 0 ? "text-green-400" : "text-red-400"}`}>
+                   {res.totalRadlci >= 0 ? `+${res.totalRadlci}` : res.totalRadlci} radlcev
                  </span>
                </div>
                <span className="text-sm font-bold text-yellow-100 uppercase tracking-tighter">{res.contract}</span>
-               <span className="text-[10px] text-gray-300">Igra: {res.declarer}</span>
+               <span className="text-[10px] text-gray-300">Igra: {res.declarer} &bull; {res.points >= 0 ? "+" : ""}{res.points} točk</span>
             </div>
           ))}
         </div>
@@ -442,27 +442,55 @@ function App() {
         {gameState.phase === "finished" && roundScore && (
           <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-lg">
              <div className="bg-green-900 p-8 rounded-3xl border-4 border-yellow-500 shadow-[0_0_50px_rgba(234,179,8,0.3)] text-center max-w-lg w-full transform animate-in fade-in zoom-in duration-500">
-                <h2 className="text-5xl font-black text-yellow-400 mb-2 uppercase tracking-tighter">Igra Končana</h2>
-                <p className="text-xl text-yellow-100 mb-8 font-serif italic">{gameState.contract?.replace('_', ' ').toUpperCase()}</p>
-                
-                <div className="grid grid-cols-2 gap-4 mb-12">
-                   <div className={`p-6 rounded-2xl border-2 ${roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
-                      <span className="block text-xs font-bold text-gray-300 uppercase mb-1">Declarer Ekipa</span>
-                      <span className="text-4xl font-black">{roundScore.declarerTeam.cardPoints}</span>
-                      <span className="block text-[10px] text-gray-400 mt-2">Točk</span>
+                <h2 className={`text-5xl font-black mb-2 uppercase tracking-tighter ${roundScore.isWin ? "text-yellow-400" : "text-red-400"}`}>
+                  {roundScore.isWin ? "Zmaga! 🏆" : "Poraz! 💔"}
+                </h2>
+                <p className="text-xl text-yellow-100 mb-6 font-serif italic">{gameState.contract?.replace('_', ' ').toUpperCase()}</p>
+
+                {/* Card points */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                   <div className={`p-4 rounded-2xl border-2 ${roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
+                      <span className="block text-xs font-bold text-gray-300 uppercase mb-1">Igralci</span>
+                      <span className="text-3xl font-black">{roundScore.declarerTeam.cardPoints}</span>
+                      <span className="block text-[10px] text-gray-400 mt-1">kart. točk</span>
                    </div>
-                   <div className={`p-6 rounded-2xl border-2 ${!roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
+                   <div className={`p-4 rounded-2xl border-2 ${!roundScore.isWin ? "bg-green-600/30 border-green-400" : "bg-black/20 border-white/10"}`}>
                       <span className="block text-xs font-bold text-gray-300 uppercase mb-1">Branilci</span>
-                      <span className="text-4xl font-black">{roundScore.defendingTeam.cardPoints}</span>
-                      <span className="block text-[10px] text-gray-400 mt-2">Točk</span>
+                      <span className="text-3xl font-black">{roundScore.defendingTeam.cardPoints}</span>
+                      <span className="block text-[10px] text-gray-400 mt-1">kart. točk</span>
                    </div>
                 </div>
 
-                <div className="mb-10 flex flex-col items-center">
-                   <span className={`text-6xl font-black drop-shadow-lg ${roundScore.pointDifference >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {roundScore.pointDifference >= 0 ? `+${roundScore.pointDifference}` : roundScore.pointDifference}
+                {/* Bonuses breakdown */}
+                {roundScore.bonuses.length > 0 && (
+                  <div className="mb-4 bg-black/20 rounded-xl p-3 text-left space-y-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Napovedi &amp; bonusi</p>
+                    {roundScore.bonuses.map((b, i) => (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-gray-300 capitalize">
+                          {b.announcedBy === "silent" ? "(tiho) " : ""}{b.type.replace("_", " ")}
+                          {b.announcedBy !== "silent" && !b.achieved ? " ✗" : b.achieved ? " ✓" : ""}
+                        </span>
+                        <span className={b.radlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                          {b.radlci >= 0 ? "+" : ""}{b.radlci}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-xs border-t border-white/10 pt-1 mt-1">
+                      <span className="text-gray-300">Pogodba ({gameState.contract?.replace("_"," ")})</span>
+                      <span className={roundScore.contractRadlci >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                        {roundScore.contractRadlci >= 0 ? "+" : ""}{roundScore.contractRadlci}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Total radlci */}
+                <div className="mb-8 flex flex-col items-center">
+                   <span className={`text-6xl font-black drop-shadow-lg ${roundScore.totalRadlci >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {roundScore.totalRadlci >= 0 ? `+${roundScore.totalRadlci}` : roundScore.totalRadlci}
                    </span>
-                   <span className="text-sm font-bold text-gray-300 uppercase tracking-widest mt-2">Razlika v točkah</span>
+                   <span className="text-sm font-bold text-gray-300 uppercase tracking-widest mt-2">Skupaj radlcev</span>
                 </div>
 
                 <button 
