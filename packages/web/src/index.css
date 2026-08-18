@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply w-24 h-36 bg-white border border-gray-300 rounded shadow flex flex-col justify-between p-2 select-none;
+  }
+  
+  .card-suit {
+    @apply text-red-600;
+  }
+  
+  .card-black {
+    @apply text-black;
+  }
+  
+  .card-tarok {
+    @apply text-blue-800 font-bold bg-blue-50 border-blue-200;
+  }
+}
