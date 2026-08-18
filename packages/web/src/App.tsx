@@ -306,25 +306,7 @@ function App() {
                 );
               })}
 
-              {/* Last captured trick (Ghost display) - only when NOT processing a trick */}
-              {lastCapturedTrick && !isProcessingTrick && gameState.trickRound?.currentTrick.plays.length === 0 && (
-                <div className="opacity-20 grayscale-[0.8] scale-75 pointer-events-none">
-                  {lastCapturedTrick.trick.plays.map((play: any, idx: number) => {
-                    const pos = getPlayerPosition(play.playerId);
-                    const rotations: Record<string, string> = {
-                      bottom: "translate-y-24 rotate-0",
-                      top: "-translate-y-24 rotate-180",
-                      left: "-translate-x-24 -rotate-90",
-                      right: "translate-x-24 rotate-90"
-                    };
-                    return (
-                      <div key={idx} className={`absolute ${rotations[pos]}`}>
-                        <PlayingCard card={play.card} disabled />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+
             </div>
 
             {/* Interaction UI Overlays */}
