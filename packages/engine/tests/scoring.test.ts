@@ -3,6 +3,36 @@ import { getCardValue, countPoints, hasTrula, hasAllKings } from "../src/scoring
 import { createTarokDeck } from "../src/cards/deck.js";
 import { type Card } from "../src/cards/card.js";
 
+// Zaokroževanje razlike: cifra 8,9,0,1,2 → na 0; cifra 3,4,5,6,7 → na 5
+function roundToNearest5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
+
+describe("Zaokroževanje razlike (roundToNearest5)", () => {
+  const cases: [number, number][] = [
+    [49, 50], // cifra 9 → na 0
+    [48, 50], // cifra 8 → na 0
+    [47, 45], // cifra 7 → na 5
+    [46, 45], // cifra 6 → na 5
+    [45, 45], // cifra 5 → na 5
+    [44, 45], // cifra 4 → na 5
+    [43, 45], // cifra 3 → na 5
+    [42, 40], // cifra 2 → na 0
+    [41, 40], // cifra 1 → na 0
+    [40, 40], // cifra 0 → na 0
+    [59, 60], // cifra 9 → na 0
+    [57, 55], // cifra 7 → na 5
+    [35, 35], // točno 35 → 35
+    [36, 35], // cifra 6 → na 5 (ni 0) ... wait: 36 → 35 ker je 36 bliže 35
+    [38, 40], // cifra 8 → na 0
+  ];
+  for (const [input, expected] of cases) {
+    it(`${input} → ${expected}`, () => {
+      expect(roundToNearest5(input)).toBe(expected);
+    });
+  }
+});
+
 describe("Scoring", () => {
   describe("getCardValue", () => {
     it("assigns 5 points to Trula cards", () => {

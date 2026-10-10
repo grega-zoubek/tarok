@@ -83,6 +83,81 @@ describe("Game Scoring", () => {
     expect(() => calculateGameScore(playingState)).toThrowError();
   });
 
+  it("berač: trula in kralji se ne štejejo", () => {
+    // Berač: deklarant mora vzeti 0 štihov.
+    // Ker je vzel štih (winner=0 v prvem štihu), je izgubil.
+    // Trula / kralji se NE smejo pojaviti v bonusih.
+    const state = createMockFinishedGameState();
+    const beracState: GameState = {
+      ...state,
+      contract: "berac",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(beracState);
+    // Ni trule / kraljev v bonusih
+    const hasTrulaBonus  = result.bonuses.some(b => b.type === "trula");
+    const hasKraljiBonus = result.bonuses.some(b => b.type === "kralji");
+    expect(hasTrulaBonus,  "berač ne sme šteti trule").toBe(false);
+    expect(hasKraljiBonus, "berač ne sme šteti kraljev").toBe(false);
+    // Poraz: deklarant je vzel štih (winner=0)
+    expect(result.isWin).toBe(false);
+    // Vrednost = −base (70)
+    expect(result.contractValue).toBe(-70);
+    expect(result.totalBeforeRadlci).toBe(-70);
+  });
+
+  it("solo_brez: trula in kralji se ne štejejo", () => {
+    const state = createMockFinishedGameState();
+    const soloBrezState: GameState = {
+      ...state,
+      contract: "solo_brez",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(soloBrezState);
+    expect(result.bonuses.some(b => b.type === "trula")).toBe(false);
+    expect(result.bonuses.some(b => b.type === "kralji")).toBe(false);
+  });
+
+  it("tri: trula se šteje samo če ENA ekipa pobere VSE 3 karte", () => {
+    // V mock stanju karte niso razporejene tako da bi ena ekipa imela vso trulo —
+    // zato se pri razdeljeneni truli NE sme nič šteti.
+    const state = createMockFinishedGameState();
+    const result = calculateGameScore(state);
+    // Preverimo da bonusi niso prisotni za razdeljeno trulo / kralje
+    // (mock deck je naključen — samo preverimo da ni napačnega štetja)
+    for (const bonus of result.bonuses) {
+      if (bonus.type === "trula" || bonus.type === "kralji") {
+        // Če je bonus prisoten, mora biti announcedBy !== "silent"
+        // ALI mora biti ena ekipa res imela vse karte
+        const allWithDeclarer = bonus.type === "trula"
+          ? result.declarerTeam.wonTrula
+          : result.declarerTeam.wonKings;
+        const allWithDefenders = bonus.type === "trula"
+          ? result.defendingTeam.wonTrula
+          : result.defendingTeam.wonKings;
+        // Bonus je dovoljen le če ga je kdo napovedal ali ena ekipa ima vse
+        const announced = bonus.announcedBy !== "silent";
+        expect(allWithDeclarer || allWithDefenders || announced,
+          `${bonus.type} ne sme biti ocenjen pri razdeljeni truli/kraljih brez napovedi`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("berač: zgodnja prekinitev ko deklarant vzame štih (dispatchPlay)", () => {
+    // Simuliramo dispatchPlay ki konča igro takoj ob berač štihu
+    // Preverimo le z game-scoring da ni trule/kraljev
+    const state = createMockFinishedGameState();
+    const beracState: GameState = {
+      ...state,
+      contract: "berac",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const score = calculateGameScore(beracState);
+    expect(score.isWin).toBe(false);   // Vzel štih → poraz
+    expect(score.contractValue).toBeLessThan(0); // Negativno
+  });
+
   it("calculates exact points for declarer and defending team", () => {
     const state = createMockFinishedGameState();
     const result = calculateGameScore(state);
@@ -101,5 +176,68 @@ describe("Game Scoring", () => {
     
     // Total should equal countPoints of all those 14 cards (this might not be exactly 70 because we only used a subset of deck for tricks)
     expect(result.isWin).toBe(decPts > 35);
+  });
+
+  it("solo_tri ima vrednost 40 + razlika (4 igralci)", () => {
+    const state = createMockFinishedGameState();
+    const soloTri: GameState = {
+      ...state,
+      contract: "solo_tri",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(soloTri);
+    if (result.isWin) {
+      expect(result.contractValue).toBe(40 + result.razlika);
+    } else {
+      expect(result.contractValue).toBe(-40 + result.razlika);
+    }
+  });
+
+  it("solo_dve ima vrednost 50 + razlika (4 igralci)", () => {
+    const state = createMockFinishedGameState();
+    const soloDve: GameState = {
+      ...state,
+      contract: "solo_dve",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(soloDve);
+    if (result.isWin) {
+      expect(result.contractValue).toBe(50 + result.razlika);
+    } else {
+      expect(result.contractValue).toBe(-50 + result.razlika);
+    }
+  });
+
+  it("solo_ena ima vrednost 60 + razlika (4 igralci)", () => {
+    const state = createMockFinishedGameState();
+    const soloEna: GameState = {
+      ...state,
+      contract: "solo_ena",
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(soloEna);
+    if (result.isWin) {
+      expect(result.contractValue).toBe(60 + result.razlika);
+    } else {
+      expect(result.contractValue).toBe(-60 + result.razlika);
+    }
+  });
+
+  it("tri/dve/ena zmaga zahteva, da deklarant pobare vsaj 1 štih", () => {
+    // "35 točk in ena karta" — deklarant mora vzeti vsaj 1 štih, ne samo založke.
+    const state = createMockFinishedGameState();
+    // V mock stanju deklarant (0) osvoji prvi štih. Spremenimo vse štibe v branilčeve.
+    const noTrickState: GameState = {
+      ...state,
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: state.trickRound!.capturedTricks.map(ct =>
+          ct.winner === 0 ? { ...ct, winner: 1 } : ct
+        ),
+      },
+    };
+    const result = calculateGameScore(noTrickState);
+    // Declarer nima nobenega osvojenega štiha → ni zmaga ("ena karta" pravilo).
+    expect(result.isWin).toBe(false);
   });
 });

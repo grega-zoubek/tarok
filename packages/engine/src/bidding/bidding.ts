@@ -118,7 +118,7 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
   }
 
   if (action !== PASS && !isLegalBid(round, playerId, action)) {
-    throw new Error(`Bid ${action} is not legal for player ${playerId}`);
+    throw new Error(`Neveljavna licitacija ${action} za igralca ${playerId}`);
   }
 
   const nextBids = [...round.bids, { playerId, action }];

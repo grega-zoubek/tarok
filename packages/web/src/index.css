@@ -4,19 +4,70 @@
 
 @layer components {
   .card {
-    /* 40% bigger: 96px -> ~134px wide, 144px -> ~202px tall */
-    @apply w-[134px] h-[202px] bg-white border border-gray-300 rounded-lg shadow-md flex flex-col justify-between p-2 select-none;
+    @apply w-[80px] h-[120px] rounded-lg shadow-lg flex flex-col justify-between p-1.5 select-none relative overflow-hidden;
+    background: linear-gradient(145deg, #fffef5, #f5f0e0);
+    border: 2px solid #8b7355;
+    box-shadow: 
+      0 2px 8px rgba(0,0,0,0.3),
+      inset 0 0 20px rgba(139,115,85,0.1);
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px solid rgba(139,115,85,0.3);
+    border-radius: 4px;
+    pointer-events: none;
   }
   
   .card-suit {
-    @apply text-red-600;
+    @apply text-red-700;
   }
   
   .card-black {
-    @apply text-black;
+    @apply text-gray-900;
   }
   
   .card-tarok {
-    @apply text-blue-800 font-bold bg-blue-50 border-blue-200;
+    @apply text-amber-900 font-bold;
+    background: linear-gradient(145deg, #fef3c7, #fde68a);
+    border-color: #92400e;
+  }
+
+  .card-tarok::before {
+    border-color: rgba(146,64,14,0.3);
+  }
+
+  .card:hover:not(.cursor-default) {
+    transform: translateY(-8px) scale(1.05);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  }
+
+  /* Suit symbols - larger and more prominent */
+  .card-suit-symbol {
+    font-size: 2.5rem;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+  }
+
+  .card-tarok-symbol {
+    font-size: 1.8rem;
+    line-height: 1;
+    color: #78350f;
+  }
+
+  /* Corner labels */
+  .card-corner {
+    @apply text-xs font-bold leading-tight;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .card-corner-symbol {
+    font-size: 0.75rem;
+    line-height: 1;
   }
 }

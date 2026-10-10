@@ -1,6 +1,6 @@
 import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType } from "@tarok/engine";
 import { 
-  getLegalPlays, PASS, getTrickWinner, isTarokCard, isSuitCard, countPoints, tarokStrength, suitStrength
+  getLegalPlays, getKlopLegalPlays, PASS, getTrickWinner, isTarokCard, isSuitCard, countPoints, tarokStrength, suitStrength
 } from "@tarok/engine";
 import type { TarokBot } from "./random-bot.js";
 
@@ -121,7 +121,10 @@ export class HeuristicBot implements TarokBot {
     const trick = state.trickRound?.currentTrick;
     if (!trick) throw new Error("No active trick");
 
-    const legalPlays = getLegalPlays(hand, trick);
+    // Klop / berač / odprti berač: moraš iti čez (višja karta če jo imaš)
+    const isKlop = state.contract === "klop";
+    const isNegat  = state.contract === "berac" || state.contract === "odprti_berac";
+    const legalPlays = (isKlop || isNegat) ? getKlopLegalPlays(hand, trick) : getLegalPlays(hand, trick);
     if (legalPlays.length === 1) return legalPlays[0]!;
 
     // LEVEL 1: Random
@@ -133,6 +136,19 @@ export class HeuristicBot implements TarokBot {
     const tarokPlays = legalPlays.filter(isTarokCard).sort((a, b) => tarokStrength(a) - tarokStrength(b));
     const suitPlays = legalPlays.filter(isSuitCard).sort((a, b) => suitStrength(a) - suitStrength(b));
     const sortedPlays = [...suitPlays, ...tarokPlays]; // Lowest suit to highest tarok roughly
+
+    // ── KLOP / BERAČ strategija: izogibaj se štihem ──────────────────────────
+    if (isKlop || isNegat) {
+      // Vedno igraj najnižjo legalno karto (getKlopLegalPlays že filtrira)
+      // Prednost: barvne karte < taroki (taroki so vrednejši)
+      const klopSorted = [...legalPlays].sort((a, b) => {
+        const aT = isTarokCard(a), bT = isTarokCard(b);
+        if (aT !== bT) return aT ? 1 : -1; // barvne najprej
+        if (aT && bT) return tarokStrength(a) - tarokStrength(b); // nižji tarok
+        return suitStrength(a as any) - suitStrength(b as any);   // nižja barvna
+      });
+      return klopSorted[0]!;
+    }
 
     // LEVEL 2: Always play the weakest possible card to avoid losing points
     if (this.difficulty === 2) {

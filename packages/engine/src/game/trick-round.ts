@@ -1,8 +1,10 @@
 import { cardKey, type Card } from "../cards/card.js";
 import {
+  addPlay,
   createTrick,
   getTrickWinner,
   playCard,
+  getKlopLegalPlays,
   type PlayedCard,
   type PlayerId,
   type Trick,
@@ -118,6 +120,45 @@ export function getCapturedTricks(
   playerId: PlayerId,
 ): CapturedTrick[] {
   return round.capturedTricks.filter((captured) => captured.winner === playerId);
+}
+
+/**
+ * Klop varianta playTurn — uporablja getKlopLegalPlays (moraš iti čez).
+ */
+export function playTurnKlop(
+  round: TrickRound,
+  playerId: PlayerId,
+  card: Card,
+): TrickRound {
+  const currentPlayer = getCurrentPlayer(round);
+  if (currentPlayer === undefined) {
+    throw new RangeError("Cannot play a card: the trick is complete");
+  }
+  if (playerId !== currentPlayer) {
+    throw new RangeError(`It is player ${currentPlayer}'s turn, not player ${playerId}'s`);
+  }
+  const hand = round.hands.find((h) => h.playerId === playerId);
+  if (hand === undefined) {
+    throw new Error(`No hand exists for player ${playerId}`);
+  }
+
+  const legalCards = getKlopLegalPlays(hand.cards, round.currentTrick);
+  const key = cardKey(card);
+  if (!legalCards.some(c => cardKey(c) === key)) {
+    throw new RangeError(`Klop: player ${playerId} cannot legally play ${key}`);
+  }
+
+  const nextTrick = addPlay(round.currentTrick, { playerId, card });
+
+  return {
+    ...round,
+    hands: round.hands.map((h) =>
+      h.playerId === playerId
+        ? { playerId: h.playerId, cards: h.cards.filter(c => cardKey(c) !== key) }
+        : h
+    ),
+    currentTrick: nextTrick,
+  };
 }
 
 /** Starts the next trick with the winner of the completed current trick. */

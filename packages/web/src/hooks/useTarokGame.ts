@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { 
   type GameState, 
   createTarokDeck, 
@@ -21,8 +21,12 @@ import {
   isSuitCard,
   suitStrength,
   calculateGameScore,
+  applyRadlci,
+  isLegalBid,
+  PASS,
+  type Bid,
   type GameScoreResult,
-  type AnnouncementType
+  type AnnouncementType,
 } from "@tarok/engine";
 import { HeuristicBot, type BotDifficulty } from "@tarok/ai";
 
@@ -41,9 +45,20 @@ export interface RoundResult {
   round: number;
   contract: string;
   declarer: string;
-  points: number;         // card point difference from 35
-  totalRadlci: number;    // full radlci (contract + bonuses)
-  winnerTeam: "declarer" | "defenders";
+  razlika: number;           // zaokrožena razlika točk
+  valueBeforeRadlci: number; // contractValue + bonusValue
+  finalValue: number;        // po aplikaciji radlcev
+  radlciUsed: number;        // koliko radlcev je bilo porabljenih
+  mondfang: number;          // 0 ali −21
+  mondfangPlayerId: number | undefined; // kdo ga je izgubil
+  newRadlciEarned: number;   // koliko novih radlcev so dobili
+  winnerTeam: "declarer" | "defenders" | "klop";
+  /** Delta točk tega kroga za vsakega igralca (index = playerId) */
+  perPlayerDelta: number[];
+  // Klop-specifično
+  klopPlayerPoints?: Record<number, number> | undefined;
+  klopWinners?: number[] | undefined;
+  klopLosers?: number[] | undefined;
 }
 
 export function useTarokGame() {
@@ -53,11 +68,23 @@ export function useTarokGame() {
   const [lastCapturedTrick, setLastCapturedTrick] = useState<any>(null);
   const [isProcessingTrick, setIsProcessingTrick] = useState(false);
   const [isMovingCards, setIsMovingCards] = useState(false);
+  const [showKlopTalon, setShowKlopTalon] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null);
   const [history, setHistory] = useState<RoundResult[]>([]);
   const [roundScore, setRoundScore] = useState<GameScoreResult | null>(null);
-  
+  // Radlci po igralcu: indeks 0 = human, 1-3 = boti
+  const [playerRadlci, setPlayerRadlci] = useState<number[]>([0, 0, 0, 0]);
+  // Kumulativne točke po igralcu
+  const [playerScores, setPlayerScores] = useState<number[]>([0, 0, 0, 0]);
+  // Napaka za prikaz v UI
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Tracks pending trick-animation timers so we can cancel them on round reset
+  const trickTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Guards against scheduling the delayed final-score timeout more than once
+  const scoringScheduledRef = useRef(false);
+
   // Player 0 is the human
   const HUMAN_PLAYER: PlayerId = 0;
 
@@ -77,12 +104,62 @@ export function useTarokGame() {
     });
   }, []);
 
+  // ── Session-storage persistence ─────────────────────────────────────────
+  // On mount, check for a saved session and resume it.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("tarokSession");
+      if (saved) {
+        const { settings, round, hist, scores, radlci: savedRadlci } = JSON.parse(saved) as {
+          settings: GameSettings;
+          round: number;
+          hist: RoundResult[];
+          scores: number[];
+          radlci: number[];
+        };
+        setGameSettings(settings);
+        setCurrentRound(round);
+        setHistory(hist);
+        if (scores) setPlayerScores(scores);
+        if (savedRadlci) setPlayerRadlci(savedRadlci);
+        
+        // Ob refreshu ne dealamo novih kart ampak samo nastavimo settings
+        // restart igre od začetka trenutnega kroga je najboljši približek
+        startNewRound(settings, round);
+      }
+    } catch {
+      sessionStorage.removeItem("tarokSession");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps4
+  }, []);
+
+  // Persist session whenever settings / round / history / scores change.
+  useEffect(() => {
+    if (!gameSettings) return;
+    try {
+      sessionStorage.setItem(
+        "tarokSession",
+        JSON.stringify({
+          settings: gameSettings,
+          round: currentRound,
+          hist: history,
+          scores: playerScores,
+          radlci: playerRadlci,
+        })
+      );
+    } catch { /* storage full or blocked */ }
+  }, [gameSettings, currentRound, history, playerScores, playerRadlci]);
+  // ────────────────────────────────────────────────────────────────────────
+
   // Initialize game
   const startGame = (settings: GameSettings) => {
+    sessionStorage.removeItem("tarokSession");
     setGameSettings(settings);
     setCurrentRound(1);
     setHistory([]);
     setRoundScore(null);
+    setPlayerRadlci([0, 0, 0, 0]);
+    setPlayerScores([0, 0, 0, 0]);
     startNewRound(settings, 1);
   };
 
@@ -95,6 +172,10 @@ export function useTarokGame() {
   };
 
   const startNewRound = (settings: GameSettings, roundNum: number) => {
+    // Cancel any pending trick-animation timers from the previous round
+    trickTimersRef.current.forEach(clearTimeout);
+    trickTimersRef.current = [];
+    scoringScheduledRef.current = false;
     let deck = createTarokDeck();
     const randomSeed = Math.floor(Math.random() * 1000000);
     deck = shuffle(deck, createSeededRng(randomSeed));
@@ -120,31 +201,18 @@ export function useTarokGame() {
 
     setBots(newBots);
     setPlayerNames([settings.humanName, ...settings.botConfigs.map(b => b.name)]);
-    setGameState(newState);
+    // Reset animation state BEFORE setting new game state so the effect
+    // sees isProcessingTrick=false and immediately runs bot turns.
     setLastCapturedTrick(null);
     setIsProcessingTrick(false);
     setIsMovingCards(false);
+    setShowKlopTalon(false);
+    setGameState(newState);
   };
 
   // Basic game loop hook for bot actions
   useEffect(() => {
     if (!gameState || gameState.phase === "finished" || isProcessingTrick) {
-      if (gameState?.phase === "finished" && !roundScore) {
-          try {
-              const score = calculateGameScore(gameState);
-              setRoundScore(score);
-              setHistory(prev => [...prev, {
-                  round: currentRound,
-                  contract: gameState.contract || "klop",
-                  declarer: gameState.declarer !== undefined ? playerNames[gameState.declarer]! : "Nihče",
-                  points: score.pointDifference,
-                  totalRadlci: score.totalRadlci,
-                  winnerTeam: score.isWin ? "declarer" : "defenders"
-              }]);
-          } catch (e) {
-              console.error("Scoring error:", e);
-          }
-      }
       return;
     }
     // ... rest of bot logic
@@ -153,15 +221,41 @@ export function useTarokGame() {
       const currentBot = bots.find(b => b.playerId === gameState.currentPlayer);
       if (!currentBot) return;
 
+      // Talon faza:
+      //  - Prvi korak (pobiranje kupčka): 3 sekunde.
+      //  - Drugi korak (odvržene karte): povečamo pavzo, da so izbrane
+      //    talon karte vidne še 4 sekunde dlje → 3s + 4s = 7s.
+      const botDelay = gameState.phase === "talon"
+        ? (gameState.pickedTalonGroupIndex === undefined ? 3000 : 7000)
+        : 700;
+
       const timer = setTimeout(() => {
         try {
           let nextState = gameState;
           
           switch (gameState.phase) {
-            case "bidding":
-              const bid = currentBot.chooseBid(gameState);
+            case "bidding": {
+              let bid = currentBot.chooseBid(gameState);
+              // Preverimo legalnost pred dispatchom — bot morda vrne poteze ki ni več veljavna
+              if (bid !== PASS) {
+                const mockRound = {
+                  playerOrder: gameState.playerOrder,
+                  forehand: gameState.forehand,
+                  currentPlayerIndex: gameState.playerOrder.indexOf(currentBot.playerId),
+                  bids: gameState.bids,
+                  passedPlayers: gameState.passedPlayers,
+                  currentHighestBid: gameState.contract && gameState.contract !== "klop"
+                    ? { playerId: gameState.declarer!, bid: gameState.contract as Bid }
+                    : undefined,
+                  isFinished: false,
+                };
+                if (!isLegalBid(mockRound, currentBot.playerId, bid as Bid)) {
+                  bid = PASS;
+                }
+              }
               nextState = dispatchBid(gameState, currentBot.playerId, bid);
               break;
+            }
               
             case "calling":
               const suit = currentBot.chooseCalledKing(gameState);
@@ -209,19 +303,36 @@ export function useTarokGame() {
             const newlyCaptured = nextState.trickRound.capturedTricks[nextState.trickRound.capturedTricks.length - 1];
             setLastCapturedTrick(newlyCaptured);
             setIsProcessingTrick(true);
-            setIsMovingCards(false); // Show cards static first
+            setIsMovingCards(false); 
+            setShowKlopTalon(false);
             setGameState(nextState);
 
+            const isKlopTalonTrick = nextState.contract === "klop" && (nextState.trickRound.capturedTricks.length <= 6);
             const isLastTrick = nextState.phase === "finished";
-            // Last trick: show 2s static, then 1.5s fly-away animation
-            // Normal trick: show 1s static, then 1.5s fly-away animation
-            const staticHold = isLastTrick ? 2000 : 1000;
 
-            setTimeout(() => setIsMovingCards(true), staticHold);
-            setTimeout(() => {
-              setIsProcessingTrick(false);
-              setIsMovingCards(false);
-            }, staticHold + 1500);
+            if (isKlopTalonTrick) {
+              // 1. 4 karte na mizi ustavljene.
+              // 2. Po 500ms prileti talon karta.
+              // 3. Po 1500ms vse skupaj odleti.
+              const t1 = setTimeout(() => setShowKlopTalon(true), 500);
+              const t2 = setTimeout(() => setIsMovingCards(true), 2000); 
+              const t3 = setTimeout(() => {
+                setIsProcessingTrick(false);
+                setIsMovingCards(false);
+                setShowKlopTalon(false);
+              }, 3500);
+              trickTimersRef.current = [t1, t2, t3];
+            } else {
+              // Navaden štih: 1.5s pavza, potem fly-away.
+              // Zadnji štih: 3s pavza (po tvoji želji), potem fly-away.
+              const staticHold = isLastTrick ? 3000 : 1500;
+              const t1 = setTimeout(() => setIsMovingCards(true), staticHold);
+              const t2 = setTimeout(() => {
+                setIsProcessingTrick(false);
+                setIsMovingCards(false);
+              }, staticHold + 1500);
+              trickTimersRef.current = [t1, t2];
+            }
           } else {
             setGameState(nextState);
           }
@@ -229,11 +340,136 @@ export function useTarokGame() {
         } catch (e) {
           console.error("Bot Error:", e);
         }
-      }, 700);
+      }, botDelay);
 
       return () => clearTimeout(timer);
     }
-  }, [gameState, bots, isProcessingTrick, HUMAN_PLAYER]);
+  }, [gameState, bots, isProcessingTrick, HUMAN_PLAYER, roundScore, playerRadlci, currentRound, playerNames]);
+
+  // ── Delayed final-round scoring ────────────────────────────────────────
+  // Ko se igra zaključi, počakamo ~3 sekunde, da igralec vidi zadnjo padlo
+  // karto (zadnji štih), ŠELE nato prikažemo rezultat kroga (roundScore).
+  // Brez te pavze bi overlay rezultata takoj prekril tabelo in 4. karta
+  // zadnjega štiha ne bi bila vidna.
+  useEffect(() => {
+    if (!gameState || gameState.phase !== "finished" || roundScore) return;
+    if (scoringScheduledRef.current) return;
+
+    scoringScheduledRef.current = true;
+
+    const t = setTimeout(() => {
+      scoringScheduledRef.current = false;
+      try {
+        const score = calculateGameScore(gameState);
+
+        // Radlci aktivne ekipe (deklarant + partner)
+        const declarerTeam = gameState.teams?.declarerTeam ?? [];
+        const declarerRadlciCount = declarerTeam.reduce(
+          (max, pid) => Math.max(max, playerRadlci[pid] ?? 0), 0
+        );
+
+        // Klop ima posebno logiko radlcev
+        let finalValue: number;
+        let radlciUsed: number;
+
+        if (gameState.contract === "klop") {
+          finalValue = 0; // klop se prikazuje drugače
+          radlciUsed = 0;
+        } else {
+          const applied = applyRadlci(score.totalBeforeRadlci, declarerRadlciCount);
+          finalValue = applied.finalValue;
+          radlciUsed = applied.radlciUsed;
+        }
+
+        // Posodobi radlce:
+        // - Aktivni: če zmaga, porabi radlce (reset na 0); sicer ohrani
+        // - Vsi: dobijo +newRadlciEarned
+        setPlayerRadlci(prev => {
+          const next = [...prev];
+          for (let i = 0; i < next.length; i++) {
+            next[i] = (next[i] ?? 0) + score.newRadlciEarned;
+          }
+          if (gameState.contract === "klop") {
+            for (const winnerId of (score.klopWinners ?? [])) {
+              next[winnerId] = 0;
+            }
+          } else {
+            if (score.isWin && radlciUsed > 0) {
+              for (const pid of declarerTeam) {
+                next[pid] = 0;
+              }
+            }
+          }
+          return next;
+        });
+
+        // ── Delta točk za vsakega igralca ────────────────────────────────
+        const perPlayerDelta = [0, 0, 0, 0];
+        let roundFinalValue = finalValue;
+
+        if (gameState.contract === "klop") {
+          for (const pid of gameState.playerOrder) {
+            const isWinner = score.klopWinners?.includes(pid);
+            const isLoser = score.klopLosers?.includes(pid);
+            let base: number;
+            if (isWinner) {
+              base = 70;
+            } else if (isLoser) {
+              base = -70;
+            } else {
+              base = -(score.klopPlayerPoints?.[pid] ?? 0);
+            }
+            const ownRadlc = playerRadlci[pid] ?? 0;
+            perPlayerDelta[pid] = base * Math.pow(2, ownRadlc);
+          }
+          roundFinalValue = perPlayerDelta[0] ?? 0;
+        } else {
+          const declarerTeamIds = new Set(gameState.teams?.declarerTeam ?? []);
+          const defendingTeamIds = new Set(gameState.teams?.defendingTeam ?? []);
+          const declarerWon = score.isWin;
+
+          for (const pid of gameState.playerOrder) {
+            if (declarerTeamIds.has(pid)) {
+              perPlayerDelta[pid] = roundFinalValue;
+            } else if (defendingTeamIds.has(pid)) {
+              perPlayerDelta[pid] = declarerWon ? 0 : -roundFinalValue;
+            }
+          }
+        }
+
+        // Dodaj Mondfang kazen tistemu, ki ga je izgubil
+        if (score.mondfang < 0 && score.mondfangPlayerId !== undefined) {
+          perPlayerDelta[score.mondfangPlayerId] += score.mondfang; // -21
+        }
+
+        // Posodobi kumulativne točke
+        setPlayerScores(prev => prev.map((s, i) => s + (perPlayerDelta[i] ?? 0)));
+
+        setRoundScore(score);
+        setHistory(prev => [...prev, {
+          round: currentRound,
+          contract: gameState.contract || "klop",
+          declarer: gameState.declarer !== undefined ? playerNames[gameState.declarer]! : "Nihče",
+          razlika: score.razlika,
+          valueBeforeRadlci: score.totalBeforeRadlci,
+          finalValue: roundFinalValue,
+          radlciUsed,
+          mondfang: score.mondfang,
+          mondfangPlayerId: score.mondfangPlayerId,
+          newRadlciEarned: score.newRadlciEarned,
+          winnerTeam: gameState.contract === "klop" ? "klop" : score.isWin ? "declarer" : "defenders",
+          perPlayerDelta,
+          klopPlayerPoints: score.klopPlayerPoints,
+          klopWinners: score.klopWinners,
+          klopLosers: score.klopLosers,
+        }]);
+      } catch (e) {
+        console.error("Scoring error:", e);
+      }
+    }, 3000);
+
+    return () => clearTimeout(t);
+  }, [gameState, roundScore, playerRadlci, playerNames, currentRound]);
 
   // Human actions
   const playBid = (action: BiddingAction) => {
@@ -241,7 +477,7 @@ export function useTarokGame() {
     try {
       setGameState(dispatchBid(gameState, HUMAN_PLAYER, action));
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -250,7 +486,7 @@ export function useTarokGame() {
     try {
       setGameState(dispatchCall(gameState, HUMAN_PLAYER, suit));
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -262,7 +498,7 @@ export function useTarokGame() {
       sortedHands[HUMAN_PLAYER] = sortCards(sortedHands[HUMAN_PLAYER]!);
       setGameState({ ...nextState, hands: sortedHands });
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -271,7 +507,7 @@ export function useTarokGame() {
     try {
       setGameState(dispatchDiscard(gameState, HUMAN_PLAYER, cards));
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -280,7 +516,7 @@ export function useTarokGame() {
     try {
       setGameState(dispatchAnnouncementPass(gameState, HUMAN_PLAYER));
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -300,21 +536,35 @@ export function useTarokGame() {
         setLastCapturedTrick(newlyCaptured);
         setIsProcessingTrick(true);
         setIsMovingCards(false);
+        setShowKlopTalon(false);
         setGameState(nextState);
 
+        const isKlopTalonTrick = nextState.contract === "klop" && (nextState.trickRound.capturedTricks.length <= 6);
         const isLastTrick = nextState.phase === "finished";
-        const staticHold = isLastTrick ? 2000 : 1000;
 
-        setTimeout(() => setIsMovingCards(true), staticHold);
-        setTimeout(() => {
-          setIsProcessingTrick(false);
-          setIsMovingCards(false);
-        }, staticHold + 1500);
+        if (isKlopTalonTrick) {
+          const t1 = setTimeout(() => setShowKlopTalon(true), 500);
+          const t2 = setTimeout(() => setIsMovingCards(true), 2000); 
+          const t3 = setTimeout(() => {
+            setIsProcessingTrick(false);
+            setIsMovingCards(false);
+            setShowKlopTalon(false);
+          }, 3500);
+          trickTimersRef.current = [t1, t2, t3];
+        } else {
+          const staticHold = isLastTrick ? 3000 : 1500;
+          const t1 = setTimeout(() => setIsMovingCards(true), staticHold);
+          const t2 = setTimeout(() => {
+            setIsProcessingTrick(false);
+            setIsMovingCards(false);
+          }, staticHold + 1500);
+          trickTimersRef.current = [t1, t2];
+        }
       } else {
         setGameState(nextState);
       }
     } catch (e) {
-      alert("Nelegalna poteza: " + (e as Error).message);
+      setErrorMessage("Nelegalna poteza: " + (e as Error).message);
     }
   };
 
@@ -323,7 +573,7 @@ export function useTarokGame() {
     try {
       setGameState(dispatchAnnouncement(gameState, HUMAN_PLAYER, type));
     } catch (e) {
-      alert((e as Error).message);
+      setErrorMessage((e as Error).message);
     }
   };
 
@@ -332,9 +582,12 @@ export function useTarokGame() {
     startGame,
     HUMAN_PLAYER,
     playerNames,
+    playerRadlci,
+    playerScores,
     lastCapturedTrick,
     isProcessingTrick,
     isMovingCards,
+    showKlopTalon,
     currentRound,
     maxRounds: gameSettings?.maxRounds || 0,
     history,
@@ -346,6 +599,8 @@ export function useTarokGame() {
     playDiscard,
     playAnnouncement,
     playAnnouncementPass,
-    playCard
+    playCard,
+    errorMessage,
+    clearError: () => setErrorMessage(null)
   };
 }

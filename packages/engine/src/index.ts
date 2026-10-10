@@ -85,6 +85,7 @@ export {
   addPlay,
   createTrick,
   getLegalPlays,
+  getKlopLegalPlays,
   getTrickWinner,
   isLegalPlay,
   playCard,
@@ -114,8 +115,21 @@ export { createCallingRound, isKing, holdsKing, callKing, skipCalling, determine
 export type { CalledKing, CallingRound, Teams } from "./calling/calling.js";
 export { createTalonExchange, pickTalonGroup, isLegalDiscard, discardCards } from "./talon/talon.js";
 export type { TalonExchangeRound } from "./talon/talon.js";
-export { calculateGameScore } from "./scoring/game-scoring.js";
-export type { TeamScoreResult, GameScoreResult } from "./scoring/game-scoring.js";
+export {
+  calculateGameScore,
+  applyRadlci,
+  CONTRACT_BASE_VALUES,
+  CONTRACT_VALUES,
+  BONUS_BASE_VALUES,
+  ANNOUNCEMENT_VALUES,
+  RADLC_AWARDING_CONTRACTS,
+  NO_DIFFERENCE_CONTRACTS,
+} from "./scoring/game-scoring.js";
+export type {
+  TeamScoreResult,
+  GameScoreResult,
+  BonusResult,
+} from "./scoring/game-scoring.js";
 export { createAnnouncementsRound, placeAnnouncement, passAnnouncements, getCurrentAnnouncingPlayer } from "./announcements/announcements.js";
 export type { AnnouncementType, PlayerAnnouncement, AnnouncementsRound } from "./announcements/announcements.js";
 export { dispatchAnnouncement, dispatchAnnouncementPass } from "./state/state.js";
