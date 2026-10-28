@@ -32,3 +32,7 @@ pnpm typecheck
 - **22** tarokov: Pagat (I), II–XX, Mond (XXI), Škis (najvišji)
 - **32** barvnih: 4 barve × 8 rangov
 - **Trula**: Pagat, Mond, Škis
+
+Obrazi kart uporabljajo javnodomenjske skene vzorca **Industrie und Glück**
+(Modiano / Študentski servis Maribor) — glej
+[`packages/web/public/cards/ATTRIBUTION.md`](packages/web/public/cards/ATTRIBUTION.md).
