@@ -480,9 +480,7 @@ function App() {
                 </p>
                 <div className="flex gap-0.5 justify-center max-w-[280px] flex-wrap">
                   {(gameState.hands[gameState.declarer] ?? []).map((card, i) => (
-                    <div key={i} className="scale-[0.45] -mx-3 -my-4">
-                      <PlayingCard card={card} disabled />
-                    </div>
+                    <PlayingCard key={i} card={card} disabled size="sm" />
                   ))}
                 </div>
               </div>
@@ -494,9 +492,7 @@ function App() {
                 <p className="text-[9px] text-yellow-300 font-bold uppercase text-center">Odloženi taroki</p>
                 <div className="flex gap-0.5 justify-center">
                   {gameState.discardedCards.filter(c => isTarokCard(c)).map((card, i) => (
-                    <div key={i} className="scale-[0.4] -mx-3 -my-4">
-                      <PlayingCard card={card} disabled />
-                    </div>
+                    <PlayingCard key={i} card={card} disabled size="sm" />
                   ))}
                 </div>
               </div>
@@ -595,9 +591,7 @@ function App() {
                           <div key={idx} className="flex flex-col items-center gap-2 opacity-70">
                             <div className="flex gap-1">
                               {group.map((_card, ci) => (
-                                <div key={ci} className="w-12 h-20 bg-green-900/80 border border-green-600 rounded-md flex items-center justify-center shadow-inner">
-                                  <span className="text-green-400 opacity-20 text-xl font-black">?</span>
-                                </div>
+                                <PlayingCard key={ci} faceDown disabled size="sm" />
                               ))}
                             </div>
                             <span className="text-xs text-gray-400 font-bold">Kupček {idx + 1}</span>
@@ -625,9 +619,7 @@ function App() {
                           {gameState.talonGroups.map((group, gIdx) => {
                             if (gIdx === gameState.pickedTalonGroupIndex) return null;
                             return group.map((card, cIdx) => (
-                              <div key={`${gIdx}-${cIdx}`} className="scale-[0.6] -mx-5">
-                                <PlayingCard card={card} disabled />
-                              </div>
+                              <PlayingCard key={`${gIdx}-${cIdx}`} card={card} disabled size="sm" />
                             ));
                           })}
                         </div>
