@@ -492,7 +492,13 @@ function App() {
                 <p className="text-[9px] text-yellow-300 font-bold uppercase text-center">Odloženi taroki</p>
                 <div className="flex gap-0.5 justify-center">
                   {gameState.discardedCards.filter(c => isTarokCard(c)).map((card, i) => (
+<<<<<<< HEAD
                     <PlayingCard key={i} card={card} disabled size="sm" />
+=======
+                    <div key={i} className="scale-[0.4] -mx-3 -my-4">
+                      <PlayingCard card={card} disabled />
+                    </div>
+>>>>>>> origin/master
                   ))}
                 </div>
               </div>
