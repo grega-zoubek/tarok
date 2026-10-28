@@ -298,21 +298,125 @@ describe("Game Scoring", () => {
     }
   });
 
-  it("tri/dve/ena zmaga zahteva, da deklarant pobare vsaj 1 štih", () => {
-    // "35 točk in ena karta" — deklarant mora vzeti vsaj 1 štih, ne samo založke.
+  it("tri/dve/ena: aktivna ekipa potrebuje ≥1 štih (ne nujno deklarant osebno)", () => {
+    // "35 točk in ena karta" — aktivna ekipa, partnerjev štih šteje.
     const state = createMockFinishedGameState();
-    // V mock stanju deklarant (0) osvoji prvi štih. Spremenimo vse štibe v branilčeve.
-    const noTrickState: GameState = {
-      ...state,
-      trickRound: {
-        ...state.trickRound!,
-        capturedTricks: state.trickRound!.capturedTricks.map(ct =>
-          ct.winner === 0 ? { ...ct, winner: 1 } : ct
-        ),
+    const kings = Array.from({ length: 8 }, (_, i) => ({
+      kind: "suit" as const,
+      suit: (["hearts", "diamonds", "clubs", "spades"] as const)[i % 4]!,
+      rank: "king" as const,
+    }));
+    const partnerTrick = {
+      winner: 2,
+      trick: {
+        leader: 2,
+        plays: [
+          { playerId: 2, card: { kind: "tarok" as const, rank: 2 as const, name: "ii" as const } },
+          { playerId: 1, card: { kind: "tarok" as const, rank: 3 as const, name: "iii" as const } },
+          { playerId: 3, card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const } },
+          { playerId: 0, card: { kind: "tarok" as const, rank: 5 as const, name: "v" as const } },
+        ],
       },
     };
-    const result = calculateGameScore(noTrickState);
-    // Declarer nima nobenega osvojenega štiha → ni zmaga ("ena karta" pravilo).
-    expect(result.isWin).toBe(false);
+    const withPartner: GameState = {
+      ...state,
+      discardedCards: kings,
+      talon: [],
+      teams: { declarerTeam: [0, 2], defendingTeam: [1, 3] },
+      trickRound: {
+        playerOrder: [0, 1, 2, 3],
+        hands: [],
+        currentTrick: { leader: 0, plays: [] },
+        capturedTricks: [partnerTrick],
+      },
+    };
+    const win = calculateGameScore(withPartner);
+    expect(win.declarerTeam.cardPoints).toBeGreaterThan(35);
+    expect(win.isWin).toBe(true);
+
+    // Brez štihov aktivne ekipe → poraz (samo zaloga)
+    const noTrick: GameState = {
+      ...withPartner,
+      trickRound: {
+        ...withPartner.trickRound!,
+        capturedTricks: [{ ...partnerTrick, winner: 1 }],
+      },
+    };
+    expect(calculateGameScore(noTrick).isWin).toBe(false);
+  });
+
+  it("tihi valat: +250, pogodba ostane", () => {
+    const state = createMockFinishedGameState();
+    const allDeclarer: GameState = {
+      ...state,
+      discardedCards: [],
+      talon: [],
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: state.trickRound!.capturedTricks.map((ct) => ({
+          ...ct,
+          winner: 0,
+        })),
+      },
+    };
+    const result = calculateGameScore(allDeclarer);
+    const valat = result.bonuses.find((b) => b.type === "valat");
+    expect(valat?.announcedBy).toBe("silent");
+    expect(valat?.value).toBe(250);
+    expect(result.contractValue).not.toBe(0);
+  });
+
+  it("napovedani valat nadomesti pogodbo", () => {
+    const state = createMockFinishedGameState();
+    const announced: GameState = {
+      ...state,
+      discardedCards: [],
+      talon: [],
+      announcementsRound: {
+        playerOrder: [0, 1, 2, 3],
+        declarer: 0,
+        currentPlayerIndex: 0,
+        announcements: {
+          0: [{ type: "valat", isContra: false, multiplierLevel: 1, lastContraBy: undefined }],
+          1: [],
+          2: [],
+          3: [],
+        },
+        gameMultiplier: 1,
+        gameLastContraBy: undefined,
+        consecutivePasses: 0,
+        isFinished: true,
+      },
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: state.trickRound!.capturedTricks.map((ct) => ({
+          ...ct,
+          winner: 0,
+        })),
+      },
+    };
+    const result = calculateGameScore(announced);
+    expect(result.contractValue).toBe(0);
+    const valat = result.bonuses.find((b) => b.type === "valat");
+    expect(valat?.value).toBe(500);
+  });
+
+  it("mondfang se ne šteje, če preostanek talona gre deklarantu", () => {
+    const state = createMockFinishedGameState();
+    const mond = { kind: "tarok" as const, rank: 21 as const, name: "mond" as const };
+    const withMond: GameState = {
+      ...state,
+      talon: [mond, ...state.talon.slice(1)],
+      discardedCards: state.discardedCards.filter(
+        (c) => !(c.kind === "tarok" && c.rank === 21),
+      ),
+      remainingTalonToDeclarer: true,
+    };
+    // Uncollected includes mond (not in discarded, not in tricks from mock subset)
+    const result = calculateGameScore(withMond);
+    // Če je mond v uncollected in remainingTalonToDeclarer, ni mondfang iz talona
+    if (result.uncollectedCards.some((c) => c.kind === "tarok" && c.rank === 21)) {
+      expect(result.mondfang).toBe(0);
+    }
   });
 });

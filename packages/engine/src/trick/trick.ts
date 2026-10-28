@@ -140,63 +140,85 @@ export function getLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
 }
 
 /**
+ * Pagat mora ostati za zadnjo karto (klop / berač / napovedani pagat ultimo).
+ * Če je edina legalna ali zadnja v roki, je dovoljen.
+ */
+export function holdPagatUntilLast(
+  hand: readonly Card[],
+  legal: readonly Card[],
+): Card[] {
+  if (hand.length <= 1) return [...legal];
+  const withoutPagat = legal.filter(
+    (c) => !(isTarokCard(c) && c.rank === 1),
+  );
+  return withoutPagat.length > 0 ? withoutPagat : [...legal];
+}
+
+/**
  * Klop: poleg sledenja barvi moraš igrati VIŠJO karto, če jo imaš.
  * Če ne mreš iti čez, moraš vseeno slediti barvi (katerakoli karta te barve).
  * Enako za taroke — moraš iti čez vodilni tarok, če ga imaš.
+ * Pagat se sme igrati šele kot zadnja karta.
  */
 export function getKlopLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
   const [lead] = trick.plays;
+  let legal: Card[];
   if (lead === undefined) {
-    // Vodja štiha — vsaka karta je legalna
-    return [...hand];
-  }
-
-  // Vodilna karta je tarok
-  if (isTarokCard(lead.card)) {
+    // Vodja štiha — vsaka karta je legalna (razen pagat-hold spodaj)
+    legal = [...hand];
+  } else if (isTarokCard(lead.card)) {
     const taroks = hand.filter(isTarokCard);
-    if (taroks.length === 0) return [...hand];
-
-    // Najvišji tarok na mizi
-    const highestTarokOnTable = trick.plays
-      .filter((p): p is TarokPlay => isTarokCard(p.card))
-      .reduce((best, p) =>
-        compareTaroks(p.card, best.card) > 0 ? p : best
-      );
-    const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
-    return higher.length > 0 ? higher : taroks;
-  }
-
-  // Vodilna karta je barvna
-  const ledSuit = (lead.card as SuitCard).suit;
-  const matchingSuit = hand.filter(
-    (c): c is SuitCard => isSuitCard(c) && c.suit === ledSuit
-  );
-
-  if (matchingSuit.length > 0) {
-    // Najvišja karta te barve na mizi
-    const highestSuitOnTable = trick.plays
-      .filter((p): p is SuitPlay => isSuitPlay(p) && (p.card as SuitCard).suit === ledSuit)
-      .reduce((best, p) =>
-        suitStrength(p.card as SuitCard) > suitStrength(best.card as SuitCard) ? p : best
-      );
-    const higher = matchingSuit.filter(
-      c => suitStrength(c) > suitStrength(highestSuitOnTable.card as SuitCard)
+    if (taroks.length === 0) {
+      legal = [...hand];
+    } else {
+      // Najvišji tarok na mizi
+      const highestTarokOnTable = trick.plays
+        .filter((p): p is TarokPlay => isTarokCard(p.card))
+        .reduce((best, p) =>
+          compareTaroks(p.card, best.card) > 0 ? p : best
+        );
+      const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
+      legal = higher.length > 0 ? higher : taroks;
+    }
+  } else {
+    // Vodilna karta je barvna
+    const ledSuit = (lead.card as SuitCard).suit;
+    const matchingSuit = hand.filter(
+      (c): c is SuitCard => isSuitCard(c) && c.suit === ledSuit
     );
-    return higher.length > 0 ? higher : matchingSuit;
+
+    if (matchingSuit.length > 0) {
+      // Najvišja karta te barve na mizi
+      const highestSuitOnTable = trick.plays
+        .filter((p): p is SuitPlay => isSuitPlay(p) && (p.card as SuitCard).suit === ledSuit)
+        .reduce((best, p) =>
+          suitStrength(p.card as SuitCard) > suitStrength(best.card as SuitCard) ? p : best
+        );
+      const higher = matchingSuit.filter(
+        c => suitStrength(c) > suitStrength(highestSuitOnTable.card as SuitCard)
+      );
+      legal = higher.length > 0 ? higher : matchingSuit;
+    } else {
+      // Ni barve — igraj tarok (prav tako moraš iti čez če mreš)
+      const taroks = hand.filter(isTarokCard);
+      if (taroks.length === 0) {
+        legal = [...hand];
+      } else {
+        const tarokPlaysOnTable = trick.plays.filter((p): p is TarokPlay => isTarokCard(p.card));
+        if (tarokPlaysOnTable.length === 0) {
+          legal = taroks;
+        } else {
+          const highestTarokOnTable = tarokPlaysOnTable.reduce((best, p) =>
+            compareTaroks(p.card, best.card) > 0 ? p : best
+          );
+          const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
+          legal = higher.length > 0 ? higher : taroks;
+        }
+      }
+    }
   }
 
-  // Ni barve — igraj tarok (prav tako moraš iti čez če mreš)
-  const taroks = hand.filter(isTarokCard);
-  if (taroks.length === 0) return [...hand];
-
-  const tarokPlaysOnTable = trick.plays.filter((p): p is TarokPlay => isTarokCard(p.card));
-  if (tarokPlaysOnTable.length === 0) return taroks;
-
-  const highestTarokOnTable = tarokPlaysOnTable.reduce((best, p) =>
-    compareTaroks(p.card, best.card) > 0 ? p : best
-  );
-  const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
-  return higher.length > 0 ? higher : taroks;
+  return holdPagatUntilLast(hand, legal);
 }
 
 /**

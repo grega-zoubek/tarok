@@ -213,22 +213,18 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   // Berač / odprti berač: zmaga = deklarant NE pobere NOBENEGA štiha
   // Solo brez: ≥36 kart. točk (flat ±80) — NI valat (vsi štihi)
   // Valat / barvni valat: zmaga = aktivni pobere vse štihe
-  // Ostale igre: >35 točk (≥36) IN deklarant je pobral vsaj 1 štih
-  //   ("35 točk in ena karta" / stevec-taroka; pagat: ≥36)
+  // Ostale igre: >35 točk (≥36) IN aktivna ekipa ima vsaj 1 štih
+  //   ("35 točk in ena karta" / stevec-taroka — aktivna ekipa)
+  const teamTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
   let isWin: boolean;
   if (contract === "berac" || contract === "odprti_berac") {
-    const declarerTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
-    isWin = declarerTricks === 0;
+    isWin = teamTricks === 0;
   } else if (contract === "solo_brez") {
-    const declarerPersonalTricks = trickRound.capturedTricks.filter(t => t.winner === state.declarer).length;
-    isWin = declarerPoints > 35 && declarerPersonalTricks >= 1;
+    isWin = declarerPoints > 35 && teamTricks >= 1;
   } else if (contract === "valat" || contract === "barvni_valat") {
-    const declarerTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
-    isWin = declarerTricks === trickRound.capturedTricks.length && trickRound.capturedTricks.length > 0;
+    isWin = teamTricks === trickRound.capturedTricks.length && trickRound.capturedTricks.length > 0;
   } else {
-    // "in ena karta": deklarant sam mora imeti vsaj 1 osvojen štih
-    const declarerPersonalTricks = trickRound.capturedTricks.filter(t => t.winner === state.declarer).length;
-    isWin = declarerPoints > 35 && declarerPersonalTricks >= 1;
+    isWin = declarerPoints > 35 && teamTricks >= 1;
   }
 
   // ── 4. Razlika (zaokrožena navzdol na 5) ────────────────────────────────
@@ -238,9 +234,10 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const razlika = hasDifference ? (roundToNearest5(declarerPoints) - 35) : 0;
 
   // ── 5. Vrednost pogodbe (× gameMultiplier iz kontre) ─────────────────────
+  // Napovedani valat nadomesti normalno točkovanje igre (pogodba = 0).
   const gameMultiplier = state.announcementsRound?.gameMultiplier ?? 1;
   const contractBase = CONTRACT_BASE_VALUES[contract];
-  const contractValue =
+  let contractValue =
     ((isWin ? contractBase : -contractBase) + razlika) * gameMultiplier;
 
   // ── 6. Bonusi ────────────────────────────────────────────────────────────
@@ -343,20 +340,39 @@ export function calculateGameScore(state: GameState): GameScoreResult {
       evalBonus("pagat_ultimo", pagatUltimoAchievedByDeclarer);
     }
 
-    // Kralj ultimo: samo če je napovedan
-    if (announcedByDeclarer.has("kralj_ultimo") || announcedByDefenders.has("kralj_ultimo")) {
-      const kingPlay = lastTrick.trick.plays.find(p => !isTarokCard(p.card) && p.card.rank === "king");
-      const kingUltimoByDeclarer = kingPlay !== undefined
-        && declarerTeamIds.has(lastTrick.winner)
-        && kingPlay.playerId === lastTrick.winner;
+    // Kralj ultimo: tiho 10 / napovedano 20 (stevec)
+    const kingPlay = lastTrick.trick.plays.find((p) => {
+      if (isTarokCard(p.card) || p.card.rank !== "king") return false;
+      // Partner igre: šteje klicani kralj; solo: katerikoli kralj
+      if (state.calledKing) return p.card.suit === state.calledKing.suit;
+      return true;
+    });
+    const kingInLast = kingPlay !== undefined;
+    const kingUltimoByDeclarer = kingInLast
+      && declarerTeamIds.has(lastTrick.winner)
+      && kingPlay!.playerId === lastTrick.winner;
+    if (
+      kingInLast ||
+      announcedByDeclarer.has("kralj_ultimo") ||
+      announcedByDefenders.has("kralj_ultimo")
+    ) {
       evalBonus("kralj_ultimo", kingUltimoByDeclarer);
     }
   }
 
-  // Valat napoved
-  if (announcedByDeclarer.has("valat") || announcedByDefenders.has("valat")) {
-    const declarerWonAll = trickRound.capturedTricks.every(t => declarerTeamIds.has(t.winner));
+  // Valat: tiho 250 / napovedano 500. Napovedani valat nadomesti pogodbo.
+  // Pri pogodbah valat/barvni_valat se bonus ne podvaja (pogodba že šteje).
+  const valatAnnounced =
+    announcedByDeclarer.has("valat") || announcedByDefenders.has("valat");
+  const declarerWonAll =
+    trickRound.capturedTricks.length > 0 &&
+    trickRound.capturedTricks.every((t) => declarerTeamIds.has(t.winner));
+  const isValatContract = contract === "valat" || contract === "barvni_valat";
+  if (!isValatContract && (declarerWonAll || valatAnnounced)) {
     evalBonus("valat", declarerWonAll);
+  }
+  if (valatAnnounced && !isValatContract) {
+    contractValue = 0;
   }
 
   const bonusValue = bonuses.reduce((s, b) => s + b.value, 0);
@@ -369,12 +385,14 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   let mondfangPlayerId: number | undefined = undefined;
 
   if (mondfangContracts.has(contract)) {
-    // 1. Primer: Mond je ostal v nepobrani skupini talona
+    // 1. Primer: Mond je ostal v nepobrani skupini talona → pasivna ekipa
+    // Če pa gre preostanek kasneje deklarantu (remainingTalonToDeclarer), mond
+    // ni bil "izgubljen" za pasivno ekipo.
     const mondInTalon = state.talon.find(c => isTarokCard(c) && c.rank === 21);
     if (mondInTalon) {
       const mondPicked = state.discardedCards.some(c => isTarokCard(c) && c.rank === 21);
-      if (!mondPicked) {
-        // Deklarant je "pustil" monda v talonu -> on ga izgubi
+      const mondInUncollected = uncollectedCards.some(c => isTarokCard(c) && c.rank === 21);
+      if (!mondPicked && mondInUncollected && !state.remainingTalonToDeclarer) {
         mondfang = -21;
         mondfangPlayerId = state.declarer;
       }

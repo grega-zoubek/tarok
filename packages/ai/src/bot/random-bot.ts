@@ -1,5 +1,5 @@
-import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType } from "@tarok/engine";
-import { getLegalPlays, PASS, BIDS, ANNOUNCEMENTS } from "@tarok/engine";
+import type { GameState, Card, PlayerId, BiddingAction, AnnouncementType, ContraTarget } from "@tarok/engine";
+import { getLegalPlays, PASS } from "@tarok/engine";
 
 /**
  * Interface representing a Tarok AI bot.
@@ -22,6 +22,9 @@ export interface TarokBot {
   
   /** Decide which announcements to make */
   chooseAnnouncements(state: GameState): readonly AnnouncementType[];
+
+  /** Optionally place kontra / rekontra on game or an announcement */
+  chooseContra?(state: GameState): ContraTarget | undefined;
 
   /** After solo talon exchange: optionally raise to barvni valat */
   chooseRaiseToBarvniValat?(state: GameState): boolean;
