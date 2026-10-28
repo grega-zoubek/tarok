@@ -11,6 +11,10 @@ import {
   isTarokCard,
   canPlaceContra,
   isLegalBid,
+  getLegalPlays,
+  getKlopLegalPlays,
+  getBarvniValatLegalPlays,
+  cardKey,
 } from '@tarok/engine';
 
 const SUIT_SL: Record<string, string> = {
@@ -219,7 +223,24 @@ function App() {
   const myHand = gameState?.hands?.[HUMAN_PLAYER] || [];
   const isMyTurn = gameState?.currentPlayer === HUMAN_PLAYER;
 
-
+  const legalPlayKeys = (() => {
+    if (!gameState || gameState.phase !== "playing" || !isMyTurn || !gameState.trickRound) {
+      return null as Set<string> | null;
+    }
+    const trick = gameState.trickRound.currentTrick;
+    const hand = myHand;
+    const isNeg =
+      gameState.contract === "klop" ||
+      gameState.contract === "berac" ||
+      gameState.contract === "odprti_berac";
+    const legal =
+      gameState.contract === "barvni_valat" && gameState.declarer === HUMAN_PLAYER
+        ? getBarvniValatLegalPlays(hand, trick)
+        : isNeg
+          ? getKlopLegalPlays(hand, trick)
+          : getLegalPlays(hand, trick);
+    return new Set(legal.map(cardKey));
+  })();
 
   const handleCardClick = (card: Card) => {
     if (!isMyTurn) return;
@@ -492,13 +513,7 @@ function App() {
                 <p className="text-[9px] text-yellow-300 font-bold uppercase text-center">Odloženi taroki</p>
                 <div className="flex gap-0.5 justify-center">
                   {gameState.discardedCards.filter(c => isTarokCard(c)).map((card, i) => (
-<<<<<<< HEAD
                     <PlayingCard key={i} card={card} disabled size="sm" />
-=======
-                    <div key={i} className="scale-[0.4] -mx-3 -my-4">
-                      <PlayingCard card={card} disabled />
-                    </div>
->>>>>>> origin/master
                   ))}
                 </div>
               </div>
@@ -969,6 +984,11 @@ function App() {
                  style={{ gap: myHand.length > 10 ? '-20px' : '2px' }}>
               {myHand.map((card, idx) => {
                 const isSelected = selectedDiscards.some(c => JSON.stringify(c) === JSON.stringify(card));
+                const isIllegal =
+                  legalPlayKeys !== null && !legalPlayKeys.has(cardKey(card));
+                const canClick =
+                  isMyTurn &&
+                  (gameState.phase !== "playing" || !isIllegal);
                 return (
                   <div
                     key={idx}
@@ -976,14 +996,14 @@ function App() {
                     className={`transition-all duration-200 transform flex-shrink-0 ${
                       isSelected
                         ? "-translate-y-10 scale-105 z-50 drop-shadow-xl"
-                        : isMyTurn
+                        : canClick
                           ? "hover:-translate-y-8 hover:scale-105 hover:z-40 cursor-pointer"
                           : ""
-                    }`}
+                    } ${isIllegal ? "opacity-35 grayscale pointer-events-none" : ""}`}
                   >
                     <PlayingCard
                       card={card}
-                      disabled={!isMyTurn}
+                      disabled={!canClick}
                       onClick={() => handleCardClick(card)} 
                     />
                   </div>

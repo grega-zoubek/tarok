@@ -89,6 +89,7 @@ export {
   getLegalPlays,
   getKlopLegalPlays,
   getBarvniValatLegalPlays,
+  getBarvniValatTrickWinner,
   getTrickWinner,
   isLegalPlay,
   playCard,
@@ -110,6 +111,7 @@ export type {
   ResolvedTrick,
   TrickRound,
   TrickRoundConfig,
+  TrickWinnerFn,
 } from "./game/trick-round.js";
 export { getCardValue, countPoints, hasTrula, hasAllKings } from "./scoring/scoring.js";
 export { BIDS, PASS, createBiddingRound, getCurrentBiddingPlayer, isLegalBid, placeBid, resolveBidding, getBidPriority } from "./bidding/bidding.js";

@@ -10,7 +10,8 @@ import type { AnnouncementType } from "../announcements/announcements.js";
 //
 //  tri/dve/ena              10/20/30 + razlika  (z ekipo)
 //  solo_tri/dve/ena         10/20/30 + razlika  (solo)
-//  solo_brez                80                  (brez razlike)
+//  solo_tri/dve/ena         40/50/60 + razlika  (solo, 4 igralci)
+//  solo_brez                80                  (brez razlike; ≥36 točk)
 //  berac                    70                  (negativna)
 //  klop                     70                  (negativna, posebno štetje)
 //  odprti_berac             90
@@ -209,22 +210,25 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const defendingWonKings = hasAllKings(defendingCollected);
 
   // ── 3. Zmaga ─────────────────────────────────────────────────────────────
-  // Igre brez razlike: zmaga = aktivni pobere vse štihe
   // Berač / odprti berač: zmaga = deklarant NE pobere NOBENEGA štiha
-  //   (če vzame vsaj 1 štih → takojšen poraz, že zapre v dispatchPlay)
-  // Ostale igre: zmaga = aktivna ekipa doseže ≥ 35 točk IN deklarant je pobral
-  //   vsaj 1 štih ("35 točk in ena karta" po pravilih)
+  // Solo brez: ≥36 kart. točk (flat ±80) — NI valat (vsi štihi)
+  // Valat / barvni valat: zmaga = aktivni pobere vse štihe
+  // Ostale igre: >35 točk (≥36) IN deklarant je pobral vsaj 1 štih
+  //   ("35 točk in ena karta" / stevec-taroka; pagat: ≥36)
   let isWin: boolean;
   if (contract === "berac" || contract === "odprti_berac") {
     const declarerTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
     isWin = declarerTricks === 0;
-  } else if (NO_DIFFERENCE_CONTRACTS.has(contract)) {
+  } else if (contract === "solo_brez") {
+    const declarerPersonalTricks = trickRound.capturedTricks.filter(t => t.winner === state.declarer).length;
+    isWin = declarerPoints > 35 && declarerPersonalTricks >= 1;
+  } else if (contract === "valat" || contract === "barvni_valat") {
     const declarerTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
-    isWin = declarerTricks === trickRound.capturedTricks.length;
+    isWin = declarerTricks === trickRound.capturedTricks.length && trickRound.capturedTricks.length > 0;
   } else {
     // "in ena karta": deklarant sam mora imeti vsaj 1 osvojen štih
     const declarerPersonalTricks = trickRound.capturedTricks.filter(t => t.winner === state.declarer).length;
-    isWin = declarerPoints >= 35 && declarerPersonalTricks >= 1;
+    isWin = declarerPoints > 35 && declarerPersonalTricks >= 1;
   }
 
   // ── 4. Razlika (zaokrožena navzdol na 5) ────────────────────────────────

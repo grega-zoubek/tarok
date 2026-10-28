@@ -122,6 +122,76 @@ describe("Game Scoring", () => {
     expect(result.bonuses.some(b => b.type === "kralji")).toBe(false);
   });
 
+  it("solo_brez: zmaga je ≥36 točk (ne vsi štihi), vrednost flat ±80", () => {
+    const state = createMockFinishedGameState();
+    // Deklarant vzame 1 od 2 štihov — to NI valat, a lahko še vedno zmaga solo brez.
+    const soloBrezState: GameState = {
+      ...state,
+      contract: "solo_brez",
+      discardedCards: [], // solo brez nima zaloge
+      teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
+    };
+    const result = calculateGameScore(soloBrezState);
+    expect(result.razlika).toBe(0);
+    if (result.declarerTeam.cardPoints > 35) {
+      expect(result.isWin).toBe(true);
+      expect(result.contractValue).toBe(80);
+    } else {
+      expect(result.isWin).toBe(false);
+      expect(result.contractValue).toBe(-80);
+    }
+    // Z enim izgubljenim štihom to NI "vsi štihi" — a isWin sledi točkam, ne štihom
+    const wonAll =
+      result.declarerTeam.collectedCards.length > 0 &&
+      soloBrezState.trickRound!.capturedTricks.every((t) => t.winner === 0);
+    expect(wonAll).toBe(false);
+  });
+
+  it("navadna pogodba: 36 točk zmaga, ≤35 poraz", () => {
+    // 8 kingov = točno 35 točk (raw 40 − 5 = 35).
+    const kings = Array.from({ length: 8 }, (_, i) => ({
+      kind: "suit" as const,
+      suit: (["hearts", "diamonds", "clubs", "spades"] as const)[i % 4]!,
+      rank: "king" as const,
+    }));
+    expect(countPoints(kings)).toBe(35);
+
+    const state = createMockFinishedGameState();
+    const lowTarokTrick = {
+      winner: 0,
+      trick: {
+        leader: 0,
+        plays: [
+          { playerId: 0, card: { kind: "tarok" as const, rank: 2 as const, name: "ii" as const } },
+          { playerId: 1, card: { kind: "tarok" as const, rank: 3 as const, name: "iii" as const } },
+          { playerId: 2, card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const } },
+          { playerId: 3, card: { kind: "tarok" as const, rank: 5 as const, name: "v" as const } },
+        ],
+      },
+    };
+    // 8 kingov (35) + 4 nizki taroki (+1) = 36 → zmaga
+    const at36: GameState = {
+      ...state,
+      discardedCards: kings,
+      talon: [],
+      trickRound: {
+        playerOrder: [0, 1, 2, 3],
+        hands: [],
+        currentTrick: { leader: 0, plays: [] },
+        capturedTricks: [lowTarokTrick],
+      },
+    };
+    const win = calculateGameScore(at36);
+    expect(win.declarerTeam.cardPoints).toBe(36);
+    expect(win.isWin).toBe(true);
+
+    // 7 kingov (30) +1 = 31 → poraz
+    const under: GameState = { ...at36, discardedCards: kings.slice(0, 7) };
+    const loss = calculateGameScore(under);
+    expect(loss.declarerTeam.cardPoints).toBeLessThanOrEqual(35);
+    expect(loss.isWin).toBe(false);
+  });
+
   it("tri: trula se šteje samo če ENA ekipa pobere VSE 3 karte", () => {
     // V mock stanju karte niso razporejene tako da bi ena ekipa imela vso trulo —
     // zato se pri razdeljeneni truli NE sme nič šteti.

@@ -106,12 +106,17 @@ export function isTrickComplete(round: TrickRound): boolean {
   return round.currentTrick.plays.length === round.playerOrder.length;
 }
 
-export function resolveTrick(round: TrickRound): ResolvedTrick {
+export type TrickWinnerFn = (trick: Trick) => PlayedCard;
+
+export function resolveTrick(
+  round: TrickRound,
+  winnerFn: TrickWinnerFn = getTrickWinner,
+): ResolvedTrick {
   if (!isTrickComplete(round)) {
     throw new RangeError("Cannot resolve an incomplete trick");
   }
 
-  const winningPlay = getTrickWinner(round.currentTrick);
+  const winningPlay = winnerFn(round.currentTrick);
   return { trick: round.currentTrick, winner: winningPlay.playerId };
 }
 
@@ -162,8 +167,11 @@ export function playTurnKlop(
 }
 
 /** Starts the next trick with the winner of the completed current trick. */
-export function beginNextTrick(round: TrickRound): TrickRound {
-  const resolvedTrick = resolveTrick(round);
+export function beginNextTrick(
+  round: TrickRound,
+  winnerFn: TrickWinnerFn = getTrickWinner,
+): TrickRound {
+  const resolvedTrick = resolveTrick(round, winnerFn);
 
   return {
     ...round,
