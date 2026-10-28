@@ -186,16 +186,18 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     }
   }
 
-  // Nepobranih skupin talona gredo branilcem.
-  // state.talon = vseh 6 originalnih kart talona.
-  // Del je šel v roke deklaranta (in zdaj živi v capturedTricks ali discardedCards).
-  // Preostanek, ki ni bil nikjer obračunan, gre branilcem.
+  // Preostanek talona: privzeto branilcem; če je deklarant s klicanim kraljem
+  // iz talona pobral štih, gre preostanek njemu.
   const accountedKeys = new Set([
     ...declarerCollected,
     ...defendingCollected,
   ].map(cardKey));
   const uncollectedCards = state.talon.filter(c => !accountedKeys.has(cardKey(c)));
-  defendingCollected.push(...uncollectedCards);
+  if (state.remainingTalonToDeclarer) {
+    declarerCollected.push(...uncollectedCards);
+  } else {
+    defendingCollected.push(...uncollectedCards);
+  }
 
   // ── 2. Točke kart ────────────────────────────────────────────────────────
   const declarerPoints = countPoints(declarerCollected);
@@ -231,22 +233,27 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const hasDifference = !NO_DIFFERENCE_CONTRACTS.has(contract);
   const razlika = hasDifference ? (roundToNearest5(declarerPoints) - 35) : 0;
 
-  // ── 5. Vrednost pogodbe ──────────────────────────────────────────────────
-  // Zmaga:  +osnova + razlika
-  // Poraz:  −osnova + razlika  (razlika je negativna → skupaj bolj negativno)
+  // ── 5. Vrednost pogodbe (× gameMultiplier iz kontre) ─────────────────────
+  const gameMultiplier = state.announcementsRound?.gameMultiplier ?? 1;
   const contractBase = CONTRACT_BASE_VALUES[contract];
-  const contractValue = (isWin ? contractBase : -contractBase) + razlika;
+  const contractValue =
+    ((isWin ? contractBase : -contractBase) + razlika) * gameMultiplier;
 
   // ── 6. Bonusi ────────────────────────────────────────────────────────────
   const bonuses: BonusResult[] = [];
   const announcements = state.announcementsRound?.announcements ?? {};
   const announcedByDeclarer = new Set<AnnouncementType>();
   const announcedByDefenders = new Set<AnnouncementType>();
+  const announcementMultipliers = new Map<AnnouncementType, number>();
 
   for (const [pidStr, playerAnns] of Object.entries(announcements)) {
     const pid = Number(pidStr) as PlayerId;
     for (const ann of playerAnns) {
       (declarerTeamIds.has(pid) ? announcedByDeclarer : announcedByDefenders).add(ann.type);
+      announcementMultipliers.set(
+        ann.type,
+        Math.max(announcementMultipliers.get(ann.type) ?? 1, ann.multiplierLevel),
+      );
     }
   }
 
@@ -254,20 +261,39 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     const base = BONUS_BASE_VALUES[type];
     const decAnn = announcedByDeclarer.has(type);
     const defAnn = announcedByDefenders.has(type);
+    // multiplierLevel: 1=napoved (2×base), 2=kontra (4×base), 4=rekontra (8×base), …
+    const contraMult = announcementMultipliers.get(type) ?? 1;
+
     let v: number;
     let announcedBy: BonusResult["announcedBy"];
     let achieved: boolean;
 
     if (achievedByDeclarer) {
       achieved = true;
-      if (decAnn)      { announcedBy = "declarer";  v = base * 2; }
-      else if (defAnn) { announcedBy = "defenders"; v = base * 2; achieved = false; } // branilci izgubijo napoved
-      else             { announcedBy = "silent";    v = base; }
+      if (decAnn) {
+        announcedBy = "declarer";
+        v = base * 2 * contraMult;
+      } else if (defAnn) {
+        announcedBy = "defenders";
+        v = base * 2 * contraMult;
+        achieved = false;
+      } else {
+        announcedBy = "silent";
+        v = base;
+      }
     } else {
       achieved = false;
-      if (defAnn)      { announcedBy = "defenders"; v = -(base * 2); achieved = true; }
-      else if (decAnn) { announcedBy = "declarer";  v = -(base * 2); }
-      else             { announcedBy = "silent";    v = -base; }
+      if (defAnn) {
+        announcedBy = "defenders";
+        v = -(base * 2 * contraMult);
+        achieved = true;
+      } else if (decAnn) {
+        announcedBy = "declarer";
+        v = -(base * 2 * contraMult);
+      } else {
+        announcedBy = "silent";
+        v = -base;
+      }
     }
     bonuses.push({ type, announcedBy, achieved, value: v, radlci: v });
   }

@@ -72,6 +72,10 @@ function createMockFinishedGameState(): GameState {
     announcementsRound: undefined,
     pickedTalonGroupIndex: 0,
     discardedCards: discarded,
+    calledKingInPickedTalon: false,
+    remainingTalonToDeclarer: false,
+    talonGroups: [],
+    radlci: { 0: 0, 1: 0, 2: 0, 3: 0 },
     trickRound,
   };
 }

@@ -1,7 +1,47 @@
 import React, { useState } from 'react';
 import { useTarokGame, type BotConfig, type RoundResult } from './hooks/useTarokGame';
 import { PlayingCard } from './components/PlayingCard';
-import { type Card, type Bid, BIDS, PASS, type PlayerId, ANNOUNCEMENTS, type AnnouncementType, isTarokCard } from '@tarok/engine';
+import {
+  type Card,
+  type Bid,
+  BIDS,
+  PASS,
+  type PlayerId,
+  ANNOUNCEMENTS,
+  isTarokCard,
+  canPlaceContra,
+  isLegalBid,
+} from '@tarok/engine';
+
+const SUIT_SL: Record<string, string> = {
+  hearts: 'srce',
+  diamonds: 'kara',
+  clubs: 'križ',
+  spades: 'pik',
+};
+
+const BID_SL: Record<string, string> = {
+  tri: 'Tri',
+  dve: 'Dve',
+  ena: 'Ena',
+  solo_tri: 'Solo tri',
+  solo_dve: 'Solo dve',
+  solo_ena: 'Solo ena',
+  berac: 'Berač',
+  solo_brez: 'Solo brez',
+  odprti_berac: 'Odprti berač',
+  barvni_valat: 'Barvni valat',
+  valat: 'Valat',
+  klop: 'Klop',
+};
+
+const ANN_SL: Record<string, string> = {
+  trula: 'Trula',
+  kralji: 'Kralji',
+  pagat_ultimo: 'Pagat ultimo',
+  kralj_ultimo: 'Kralj ultimo',
+  valat: 'Valat',
+};
 
 function App() {
   const game = useTarokGame();
@@ -27,6 +67,7 @@ function App() {
     playDiscard,
     playAnnouncement,
     playAnnouncementPass,
+    playContra,
     playCard,
     errorMessage,
     clearError
@@ -75,7 +116,7 @@ function App() {
                 "bg-red-900/40 border-red-800"
               }`}>
                 <span className="text-gray-400 text-xs w-8">#{r.round}</span>
-                <span className="text-yellow-100 uppercase font-bold flex-1">{r.contract.replace("_"," ")}</span>
+                <span className="text-yellow-100 uppercase font-bold flex-1">{BID_SL[r.contract] ?? r.contract}</span>
                 <span className="text-gray-300 text-xs">{r.declarer}</span>
                 <span className={`font-black ml-3 ${
                   r.finalValue >= 0 ? "text-green-400" : "text-red-400"
@@ -254,7 +295,7 @@ function App() {
                     {res.finalValue >= 0 ? "+" : ""}{res.finalValue} točk
                   </span>
                 </div>
-                <span className="text-sm font-bold text-yellow-100 uppercase tracking-tighter">{res.contract.replace("_"," ")}</span>
+                <span className="text-sm font-bold text-yellow-100 uppercase tracking-tighter">{BID_SL[res.contract] ?? res.contract}</span>
                 <div className="flex justify-between text-[10px] text-gray-300">
                   <span>{res.declarer}</span>
                   {res.radlciUsed > 0 && <span className="text-orange-300">🔸{res.radlciUsed} radlc</span>}
@@ -319,39 +360,50 @@ function App() {
         <div className="flex justify-between items-center bg-black/30 p-3 rounded-lg mb-4 border border-white/10 backdrop-blur-sm">
           <div className="flex flex-col">
             <span className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Faza</span>
-            <span className="text-lg font-bold">{gameState.phase === "playing" ? "IGRA" : gameState.phase.toUpperCase()}</span>
+            <span className="text-lg font-bold">{
+              ({ bidding: "LICITACIJA", calling: "KLICANJE", talon: "TALON", announcements: "NAPOVEDI", playing: "IGRA", finished: "KONEC" } as const)[gameState.phase]
+            }</span>
           </div>
           
           {/* Game Info Summary */}
           <div className="flex gap-4 items-center">
             <div className="text-center bg-yellow-500/10 px-4 py-1 rounded-full border border-yellow-500/20">
               <span className="text-yellow-400 text-xs block font-bold">POGODBA</span>
-              <span className="text-sm font-black text-white">{gameState.contract?.toUpperCase() || "..."}</span>
+              <span className="text-sm font-black text-white">
+                {gameState.contract ? (BID_SL[gameState.contract] ?? gameState.contract).toUpperCase() : "..."}
+              </span>
             </div>
 
             {gameState.calledKing && (
               <div className="text-center bg-blue-500/10 px-4 py-1 rounded-full border border-blue-500/20">
                 <span className="text-blue-400 text-xs block font-bold">KLICAN KRALJ</span>
                 <span className="text-sm font-black text-white capitalize">
-                  {gameState.calledKing.suit} {gameState.calledKing.suit === "hearts" ? "♥" : gameState.calledKing.suit === "diamonds" ? "♦" : gameState.calledKing.suit === "clubs" ? "♣" : "♠"}
+                  {SUIT_SL[gameState.calledKing.suit]} {gameState.calledKing.suit === "hearts" ? "♥" : gameState.calledKing.suit === "diamonds" ? "♦" : gameState.calledKing.suit === "clubs" ? "♣" : "♠"}
                 </span>
               </div>
             )}
 
-            {gameState.announcementsRound && Object.values(gameState.announcementsRound.announcements).flat().length > 0 && (
+            {gameState.announcementsRound && (
+              (Object.values(gameState.announcementsRound.announcements).flat().length > 0
+                || (gameState.announcementsRound.gameMultiplier ?? 1) > 1) && (
               <div className="text-center bg-purple-500/10 px-4 py-1 rounded-full border border-purple-500/20">
                 <span className="text-purple-400 text-xs block font-bold">NAPOVEDI</span>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap justify-center">
+                  {(gameState.announcementsRound.gameMultiplier ?? 1) > 1 && (
+                    <span className="text-[10px] bg-orange-600 px-1 rounded text-white font-bold">
+                      KONTRA×{gameState.announcementsRound.gameMultiplier}
+                    </span>
+                  )}
                   {Object.entries(gameState.announcementsRound.announcements).map(([pid, ann]) => 
                     ann.map((a, i) => (
                       <span key={`${pid}-${i}`} className="text-[10px] bg-purple-600 px-1 rounded text-white font-bold uppercase" title={playerNames[parseInt(pid)]}>
-                        {a.type.replace('_',' ')}
+                        {ANN_SL[a.type] ?? a.type}{a.multiplierLevel > 1 ? ` ×${a.multiplierLevel}` : ""}
                       </span>
                     ))
                   )}
                 </div>
               </div>
-            )}
+            ))}
           </div>
 
           <div className="flex flex-col text-right">
@@ -413,14 +465,43 @@ function App() {
                         ? "bg-red-950/60 text-red-400 border-red-500/30" 
                         : "bg-blue-700 text-white border-blue-400 animate-pulse"
                     }`}>
-                      {lastBid.action.replace("_", " ")}
+                      {lastBid.action === PASS ? "naprej" : (BID_SL[lastBid.action] ?? lastBid.action)}
                     </div>
                   )}
                 </div>
               );
             })}
 
-            {/* Sredina mize: Krožna oznaka za berača ali igro s partnerjem */}
+            {/* Odprti berač: odkrita roka deklaranta */}
+            {gameState.contract === "odprti_berac" && gameState.declarer !== undefined && gameState.phase === "playing" && (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-black/50 px-3 py-2 rounded-xl border border-red-400/40">
+                <p className="text-[10px] text-red-300 font-bold uppercase text-center mb-1">
+                  Odprta roka — {playerNames[gameState.declarer]}
+                </p>
+                <div className="flex gap-0.5 justify-center max-w-[280px] flex-wrap">
+                  {(gameState.hands[gameState.declarer] ?? []).map((card, i) => (
+                    <div key={i} className="scale-[0.45] -mx-3 -my-4">
+                      <PlayingCard card={card} disabled />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Odkriti odloženi taroki */}
+            {gameState.discardedCards.length > 0 && gameState.discardedCards.some(c => isTarokCard(c)) && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-black/40 px-2 py-1 rounded-lg border border-yellow-500/30">
+                <p className="text-[9px] text-yellow-300 font-bold uppercase text-center">Odloženi taroki</p>
+                <div className="flex gap-0.5 justify-center">
+                  {gameState.discardedCards.filter(c => isTarokCard(c)).map((card, i) => (
+                    <div key={i} className="scale-[0.4] -mx-3 -my-4">
+                      <PlayingCard card={card} disabled />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {gameState.contract === "berac" || gameState.contract === "odprti_berac" ? (
               <div className="absolute w-32 h-32 bg-red-900/10 rounded-full border border-red-500/5 flex items-center justify-center pointer-events-none">
                 <span className="text-[40px] opacity-10 font-black text-white select-none">🚫</span>
@@ -560,15 +641,37 @@ function App() {
 
             {isMyTurn && (
               <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none flex-col">
-                {gameState.phase === "bidding" && (
+                {gameState.phase === "bidding" && (() => {
+                  const mockRound = {
+                    playerOrder: gameState.playerOrder,
+                    forehand: gameState.forehand,
+                    currentPlayerIndex: gameState.playerOrder.indexOf(HUMAN_PLAYER),
+                    bids: gameState.bids,
+                    passedPlayers: gameState.passedPlayers,
+                    currentHighestBid: gameState.contract && gameState.contract !== "klop"
+                      ? { playerId: gameState.declarer!, bid: gameState.contract as Bid }
+                      : undefined,
+                    isFinished: false,
+                  };
+                  return (
                   <div className="flex flex-wrap justify-center gap-3 pointer-events-auto bg-black/60 py-20 px-8 rounded-2xl border-2 border-yellow-500 shadow-2xl backdrop-blur-md mb-4">
                     <p className="w-full text-center text-yellow-400 font-bold mb-3 text-xl">LICITACIJA</p>
-                    {BIDS.map(bid => (
-                      <button key={bid} onClick={() => playBid(bid as Bid)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-base uppercase">{bid.replace('_',' ')}</button>
-                    ))}
+                    {BIDS.map(bid => {
+                      const legal = isLegalBid(mockRound, HUMAN_PLAYER, bid);
+                      return (
+                      <button
+                        key={bid}
+                        disabled={!legal}
+                        onClick={() => playBid(bid as Bid)}
+                        className={`px-6 py-2 rounded font-bold text-base uppercase ${legal ? "bg-blue-600 hover:bg-blue-500" : "bg-gray-700 opacity-40 cursor-not-allowed"}`}
+                      >
+                        {BID_SL[bid] ?? bid}
+                      </button>
+                    );})}
                     <button onClick={() => playBid(PASS)} className="px-6 py-2 bg-red-600 hover:bg-red-500 rounded font-bold text-base uppercase w-full mt-3">Naprej</button>
                   </div>
-                )}
+                  );
+                })()}
 
                 <div className="pointer-events-auto">
                   {gameState.phase === "calling" && (
@@ -584,12 +687,20 @@ function App() {
                     </div>
                   )}
 
-                  {gameState.phase === "announcements" && (
+                  {gameState.phase === "announcements" && gameState.announcementsRound && (() => {
+                    const declarerTeam = gameState.teams?.declarerTeam ?? (gameState.declarer !== undefined ? [gameState.declarer] : []);
+                    const round = gameState.announcementsRound;
+                    const canGame = canPlaceContra(round, HUMAN_PLAYER, "game", declarerTeam);
+                    const contraTargets = [
+                      ...(canGame ? (["game"] as const) : []),
+                      ...ANNOUNCEMENTS.filter((t) => canPlaceContra(round, HUMAN_PLAYER, t, declarerTeam)),
+                    ];
+                    return (
                     <div className="bg-black/60 p-6 rounded-2xl border-2 border-yellow-500 shadow-2xl backdrop-blur-md text-center space-y-4">
                       <p className="text-yellow-400 font-bold mb-2">NAPOVEDI</p>
                       <div className="flex flex-wrap justify-center gap-2 max-w-sm">
                         {ANNOUNCEMENTS.map(type => {
-                          const alreadyAnnounced = gameState.announcementsRound?.announcements[HUMAN_PLAYER]?.some(a => a.type === type);
+                          const alreadyAnnounced = round.announcements[HUMAN_PLAYER]?.some(a => a.type === type);
                           return (
                             <button 
                               key={type} 
@@ -597,14 +708,29 @@ function App() {
                               onClick={() => playAnnouncement(type)} 
                               className={`px-4 py-2 rounded font-bold text-sm uppercase transition-all ${alreadyAnnounced ? "bg-gray-600 opacity-50 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-500"}`}
                             >
-                              {type.replace('_',' ')}
+                              {ANN_SL[type] ?? type}
                             </button>
                           );
                         })}
                       </div>
+                      {contraTargets.length > 0 && (
+                        <div className="flex flex-wrap justify-center gap-2 max-w-sm pt-2 border-t border-white/10">
+                          <p className="w-full text-orange-300 text-xs font-bold uppercase">Kontra</p>
+                          {contraTargets.map((t) => (
+                            <button
+                              key={t}
+                              onClick={() => playContra(t)}
+                              className="px-3 py-1.5 rounded font-bold text-xs uppercase bg-orange-600 hover:bg-orange-500"
+                            >
+                              {t === "game" ? "Igra" : (ANN_SL[t] ?? t)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <button onClick={() => playAnnouncementPass()} className="px-6 py-2 bg-red-600 hover:bg-red-500 rounded-lg font-bold w-full mt-4">KONČAJ / NAPREJ</button>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {gameState.phase === "talon" && gameState.pickedTalonGroupIndex === undefined && (
                     <div className="bg-black/60 p-6 rounded-2xl border-2 border-yellow-500 shadow-2xl backdrop-blur-md flex flex-col gap-4">
@@ -730,7 +856,9 @@ function App() {
                     <h2 className={`text-5xl font-black mb-1 uppercase tracking-tighter ${roundScore.isWin ? "text-yellow-400" : "text-red-400"}`}>
                       {roundScore.isWin ? "Zmaga! 🏆" : "Poraz! 💔"}
                     </h2>
-                    <p className="text-xl text-yellow-100 mb-4 font-serif italic">{gameState.contract?.replace('_', ' ').toUpperCase()}</p>
+                    <p className="text-xl text-yellow-100 mb-4 font-serif italic">
+                      {(gameState.contract ? BID_SL[gameState.contract] ?? gameState.contract : "").toUpperCase()}
+                    </p>
 
                     {/* Točke kart — samo za igre z razliko */}
                     {!isNoDiff && (
@@ -752,7 +880,7 @@ function App() {
                     <div className="mb-4 bg-black/20 rounded-xl p-3 text-left space-y-1">
                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Obračun</p>
                       <div className="flex justify-between text-xs">
-                        <span className="text-gray-300">Pogodba ({gameState.contract?.replace("_"," ")})</span>
+                        <span className="text-gray-300">Pogodba ({gameState.contract ? BID_SL[gameState.contract] ?? gameState.contract : ""})</span>
                         <span className={roundScore.contractValue >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
                           {roundScore.contractValue >= 0 ? "+" : ""}{roundScore.contractValue}
                         </span>
@@ -771,7 +899,7 @@ function App() {
                         <div key={i} className="flex justify-between text-xs">
                           <span className="text-gray-300 capitalize">
                             {b.announcedBy === "silent" ? "🤐 " : b.achieved ? "✅ " : "❌ "}
-                            {b.type.replace(/_/g, " ")}
+                            {ANN_SL[b.type] ?? b.type}
                             {b.announcedBy !== "silent" ? ` (${b.announcedBy === "declarer" ? "napoved" : "bran. napoved"})` : " (tiho)"}
                           </span>
                           <span className={b.value >= 0 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>

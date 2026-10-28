@@ -199,6 +199,19 @@ export function getKlopLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
   return higher.length > 0 ? higher : taroks;
 }
 
+/**
+ * Barvni valat: enaka pravila sledenja kot navadna igra, a vodja štiha
+ * (deklarant) ne sme voditi s tarokom, dokler ima še barvne karte.
+ */
+export function getBarvniValatLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
+  const [lead] = trick.plays;
+  if (lead === undefined) {
+    const suitCards = hand.filter(isSuitCard);
+    return suitCards.length > 0 ? suitCards : [...hand];
+  }
+  return getLegalPlays(hand, trick);
+}
+
 export function isLegalPlay(
   hand: readonly Card[],
   trick: Trick,
