@@ -4,6 +4,7 @@ import {
   createTarokDeck, 
   shuffle, 
   deal, 
+  anyHandMissingTarok,
   createInitialGameState, 
   type PlayerId, 
   createSeededRng,
@@ -13,6 +14,7 @@ import {
   dispatchDiscard,
   dispatchAnnouncement,
   dispatchAnnouncementPass,
+  dispatchContra,
   dispatchPlay,
   type BiddingAction,
   type Card,
@@ -27,6 +29,7 @@ import {
   type Bid,
   type GameScoreResult,
   type AnnouncementType,
+  type ContraTarget,
 } from "@tarok/engine";
 import { HeuristicBot, type BotDifficulty } from "@tarok/ai";
 
@@ -176,11 +179,18 @@ export function useTarokGame() {
     trickTimersRef.current.forEach(clearTimeout);
     trickTimersRef.current = [];
     scoringScheduledRef.current = false;
-    let deck = createTarokDeck();
-    const randomSeed = Math.floor(Math.random() * 1000000);
-    deck = shuffle(deck, createSeededRng(randomSeed));
-    const dealResult = deal(deck, { playerCount: 4 });
-    
+
+    // »Brez taroka ni taroka« — ponovno deli, dokler ima vsak vsaj en tarok
+    let dealResult;
+    let attempts = 0;
+    do {
+      let deck = createTarokDeck();
+      const randomSeed = Math.floor(Math.random() * 1000000) + attempts;
+      deck = shuffle(deck, createSeededRng(randomSeed));
+      dealResult = deal(deck, { playerCount: 4 });
+      attempts += 1;
+    } while (anyHandMissingTarok(dealResult.hands) && attempts < 50);
+
     const initialHands: Record<PlayerId, Card[]> = {
       0: sortCards(dealResult.hands[0]!),
       1: [...dealResult.hands[1]!],
@@ -577,6 +587,15 @@ export function useTarokGame() {
     }
   };
 
+  const playContra = (target: ContraTarget) => {
+    if (!gameState || gameState.phase !== "announcements" || gameState.currentPlayer !== HUMAN_PLAYER) return;
+    try {
+      setGameState(dispatchContra(gameState, HUMAN_PLAYER, target));
+    } catch (e) {
+      setErrorMessage((e as Error).message);
+    }
+  };
+
   return {
     gameState,
     startGame,
@@ -599,6 +618,7 @@ export function useTarokGame() {
     playDiscard,
     playAnnouncement,
     playAnnouncementPass,
+    playContra,
     playCard,
     errorMessage,
     clearError: () => setErrorMessage(null)

@@ -1,5 +1,14 @@
 import type { Card } from "../cards/card.js";
-import { cardKey } from "../cards/card.js";
+import { cardKey, isTarokCard } from "../cards/card.js";
+
+/** »Brez taroka ni taroka« — roka mora vsebovati vsaj en tarok. */
+export function handHasTarok(hand: readonly Card[]): boolean {
+  return hand.some(isTarokCard);
+}
+
+export function anyHandMissingTarok(hands: readonly (readonly Card[])[]): boolean {
+  return hands.some((hand) => !handHasTarok(hand));
+}
 
 export const DEAL_LAYOUTS = {
   4: {

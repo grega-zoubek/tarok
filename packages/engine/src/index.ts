@@ -74,6 +74,8 @@ export {
   DEAL_LAYOUTS,
   UnsupportedPlayerCountError,
   deal,
+  handHasTarok,
+  anyHandMissingTarok,
 } from "./deal/deal.js";
 export type {
   DealConfig,
@@ -86,6 +88,7 @@ export {
   createTrick,
   getLegalPlays,
   getKlopLegalPlays,
+  getBarvniValatLegalPlays,
   getTrickWinner,
   isLegalPlay,
   playCard,
@@ -130,10 +133,30 @@ export type {
   GameScoreResult,
   BonusResult,
 } from "./scoring/game-scoring.js";
-export { createAnnouncementsRound, placeAnnouncement, passAnnouncements, getCurrentAnnouncingPlayer } from "./announcements/announcements.js";
-export type { AnnouncementType, PlayerAnnouncement, AnnouncementsRound } from "./announcements/announcements.js";
-export { dispatchAnnouncement, dispatchAnnouncementPass } from "./state/state.js";
+export {
+  createAnnouncementsRound,
+  placeAnnouncement,
+  placeContra,
+  canPlaceContra,
+  passAnnouncements,
+  getCurrentAnnouncingPlayer,
+  ANNOUNCEMENTS,
+} from "./announcements/announcements.js";
+export type {
+  AnnouncementType,
+  PlayerAnnouncement,
+  AnnouncementsRound,
+  ContraTarget,
+} from "./announcements/announcements.js";
 export { createInitialGameState } from "./state/state.js";
 export type { GameState, GameStateConfig, GamePhase } from "./state/state.js";
-export { ANNOUNCEMENTS } from "./announcements/announcements.js";
-export { dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard, dispatchPlay } from "./state/state.js";
+export {
+  dispatchBid,
+  dispatchCall,
+  dispatchTalonPick,
+  dispatchDiscard,
+  dispatchAnnouncement,
+  dispatchAnnouncementPass,
+  dispatchContra,
+  dispatchPlay,
+} from "./state/state.js";
