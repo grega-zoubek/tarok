@@ -6,6 +6,7 @@ import {
   addPlay,
   createTrick,
   getLegalPlays,
+  getKlopLegalPlays,
   getTrickWinner,
   isLegalPlay,
   playCard,
@@ -189,5 +190,17 @@ describe("trick model", () => {
     expect(() => playCard(hand, createTrick(0), { playerId: 0, card: pagat })).toThrow(
       "Player 0 cannot legally play tarok:1:pagat",
     );
+  });
+
+  it("klop: pagat cannot be led while other cards remain", () => {
+    const hand = [pagat, heartQueen, clubSeven];
+    const legal = getKlopLegalPlays(hand, createTrick(0));
+    expect(legal.some((c) => c.kind === "tarok" && c.rank === 1)).toBe(false);
+    expect(legal).toContainEqual(heartQueen);
+  });
+
+  it("klop: pagat is legal as the last card", () => {
+    const hand = [pagat];
+    expect(getKlopLegalPlays(hand, createTrick(0))).toEqual([pagat]);
   });
 });

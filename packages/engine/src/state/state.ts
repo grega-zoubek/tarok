@@ -21,7 +21,13 @@ import {
   type ContraTarget,
   getCurrentAnnouncingPlayer,
 } from "../announcements/announcements.js";
-import { getBarvniValatLegalPlays, getBarvniValatTrickWinner } from "../trick/trick.js";
+import {
+  getBarvniValatLegalPlays,
+  getBarvniValatTrickWinner,
+  getKlopLegalPlays,
+  getLegalPlays,
+  holdPagatUntilLast,
+} from "../trick/trick.js";
 
 /**
  * Defines the main phases of a complete Tarok game.
@@ -408,39 +414,90 @@ export function dispatchRaiseToBarvniValat(state: GameState, playerId: PlayerId,
   };
 }
 
+/**
+ * Ali sme igralec napovedati tip (brez throw). Uporablja UI za onemogočanje gumbov.
+ */
+export function canMakeAnnouncement(
+  state: GameState,
+  playerId: PlayerId,
+  announcementType: AnnouncementType,
+): boolean {
+  if (state.phase !== "announcements" || !state.announcementsRound) return false;
+  if (getCurrentAnnouncingPlayer(state.announcementsRound) !== playerId) return false;
+  const already = state.announcementsRound.announcements[playerId]?.some(
+    (a) => a.type === announcementType,
+  );
+  if (already) return false;
+
+  if (announcementType === "pagat_ultimo") {
+    return (state.hands[playerId] ?? []).some((c) => isTarokCard(c) && c.rank === 1);
+  }
+  if (announcementType === "kralj_ultimo") {
+    if (state.calledKing) {
+      return (state.hands[playerId] ?? []).some(
+        (c) =>
+          isSuitCard(c) &&
+          c.rank === "king" &&
+          c.suit === state.calledKing!.suit,
+      );
+    }
+    return state.declarer === playerId;
+  }
+  if (announcementType === "valat") {
+    const team =
+      state.teams?.declarerTeam ??
+      (state.declarer !== undefined ? [state.declarer] : []);
+    return team.includes(playerId);
+  }
+  return true;
+}
+
+/**
+ * Legalne karte za trenutno pogodbo, vključno s pagat-hold
+ * (klop/berač vedno; napovedani pagat ultimo).
+ */
+export function getGameLegalPlays(
+  state: GameState,
+  playerId: PlayerId,
+  hand: readonly Card[],
+): Card[] {
+  if (!state.trickRound) return [...hand];
+  const trick = state.trickRound.currentTrick;
+  const isNeg =
+    state.contract === "klop" ||
+    state.contract === "berac" ||
+    state.contract === "odprti_berac";
+
+  let legal: Card[];
+  if (state.contract === "barvni_valat" && state.declarer === playerId) {
+    legal = getBarvniValatLegalPlays(hand, trick);
+  } else if (isNeg) {
+    legal = getKlopLegalPlays(hand, trick);
+  } else {
+    legal = getLegalPlays(hand, trick);
+  }
+
+  // Napovedani pagat ultimo: pagat šele v zadnjem štihu
+  const announcedPagat = Object.entries(
+    state.announcementsRound?.announcements ?? {},
+  ).some(
+    ([pid, anns]) =>
+      Number(pid) === playerId &&
+      anns.some((a) => a.type === "pagat_ultimo"),
+  );
+  if (announcedPagat && !isNeg) {
+    legal = holdPagatUntilLast(hand, legal);
+  }
+  return legal;
+}
+
 export function dispatchAnnouncement(state: GameState, playerId: PlayerId, announcementType: AnnouncementType): GameState {
   if (state.phase !== "announcements" || !state.announcementsRound) {
     throw new Error(`Cannot announce in phase ${state.phase}`);
   }
 
-  if (announcementType === "pagat_ultimo") {
-    const pagatHolder = state.playerOrder.find(pid =>
-      (state.hands[pid] ?? []).some(c => isTarokCard(c) && c.rank === 1)
-    );
-    if (pagatHolder !== playerId) {
-      throw new Error(`Samo igralec, ki ima pagata, lahko napove pagat ultimo.`);
-    }
-  }
-
-  if (announcementType === "kralj_ultimo") {
-    if (state.calledKing) {
-      const kingHolder = state.playerOrder.find(pid =>
-        (state.hands[pid] ?? []).some(c => isSuitCard(c) && c.rank === "king" && c.suit === state.calledKing!.suit)
-      );
-      if (kingHolder !== playerId) {
-        throw new Error(`Samo igralec, ki ima klicanega kralja, lahko napove kralj ultimo.`);
-      }
-    } else if (state.declarer !== playerId) {
-      throw new Error(`Solo igra: samo deklarant lahko napove kralj ultimo.`);
-    }
-  }
-
-  // Valat napoved: samo aktivna ekipa
-  if (announcementType === "valat") {
-    const team = state.teams?.declarerTeam ?? (state.declarer !== undefined ? [state.declarer] : []);
-    if (!team.includes(playerId)) {
-      throw new Error(`Valat lahko napove samo aktivna ekipa.`);
-    }
+  if (!canMakeAnnouncement(state, playerId, announcementType)) {
+    throw new Error(`Igralec ${playerId} ne more napovedati ${announcementType}.`);
   }
 
   const nextRound = placeAnnouncement(state.announcementsRound, playerId, announcementType);
@@ -513,20 +570,20 @@ export function dispatchPlay(state: GameState, playerId: PlayerId, card: Card): 
     state.contract === "berac" ||
     state.contract === "odprti_berac";
 
+  const hand = state.trickRound.hands.find((h) => h.playerId === playerId);
+  if (!hand) throw new Error(`No hand for player ${playerId}`);
+  const legal = getGameLegalPlays(state, playerId, hand.cards);
+  if (!legal.some((c) => cardKey(c) === cardKey(card))) {
+    throw new RangeError(`Nelegalna karta ${cardKey(card)}`);
+  }
+
   let nextTrickRound: TrickRound;
 
-  if (state.contract === "barvni_valat" && state.declarer === playerId) {
-    // Barvni valat: deklarant ne sme voditi s tarokom, dokler ima barvne karte
-    const hand = state.trickRound.hands.find((h) => h.playerId === playerId);
-    if (!hand) throw new Error(`No hand for player ${playerId}`);
-    const legal = getBarvniValatLegalPlays(hand.cards, state.trickRound.currentTrick);
-    if (!legal.some((c) => cardKey(c) === cardKey(card))) {
-      throw new RangeError(`Barvni valat: nelegalna karta ${cardKey(card)}`);
-    }
-    nextTrickRound = playTurn(state.trickRound, playerId, card);
-  } else if (useForcedHigher) {
+  if (useForcedHigher) {
+    // playTurnKlop already enforces getKlopLegalPlays (incl. pagat-hold)
     nextTrickRound = playTurnKlop(state.trickRound, playerId, card);
   } else {
+    // playCard uses getLegalPlays; pagat-ultimo hold already checked above
     nextTrickRound = playTurn(state.trickRound, playerId, card);
   }
 

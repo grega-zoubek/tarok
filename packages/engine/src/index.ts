@@ -93,6 +93,7 @@ export {
   getTrickWinner,
   isLegalPlay,
   playCard,
+  holdPagatUntilLast,
 } from "./trick/trick.js";
 export type { PlayedCard, PlayerId, Trick } from "./trick/trick.js";
 
@@ -174,4 +175,6 @@ export {
   dispatchAnnouncementPass,
   dispatchContra,
   dispatchPlay,
+  canMakeAnnouncement,
+  getGameLegalPlays,
 } from "./state/state.js";

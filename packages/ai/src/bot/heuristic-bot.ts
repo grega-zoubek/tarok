@@ -1,11 +1,9 @@
-import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType, Suit } from "@tarok/engine";
+import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType, Suit, ContraTarget } from "@tarok/engine";
 import {
-  getLegalPlays,
-  getKlopLegalPlays,
-  getBarvniValatLegalPlays,
-  getBarvniValatTrickWinner,
+  getGameLegalPlays,
   PASS,
   getTrickWinner,
+  getBarvniValatTrickWinner,
   isTarokCard,
   isSuitCard,
   countPoints,
@@ -16,6 +14,8 @@ import {
   isLegalBid,
   SOLO_RAISABLE_TO_BARVNI,
   getCardValue,
+  canPlaceContra,
+  canMakeAnnouncement,
 } from "@tarok/engine";
 import type { TarokBot } from "./random-bot.js";
 
@@ -83,6 +83,10 @@ export class HeuristicBot implements TarokBot {
     const hasSkis = myHand.some((c) => isTarokCard(c) && c.rank === "skis");
     const hasMond = myHand.some((c) => isTarokCard(c) && c.rank === 21);
     const kings = myHand.filter((c) => isSuitCard(c) && c.rank === "king").length;
+    const points = countPoints(myHand);
+    const counts = suitCounts(myHand);
+    const voids = SUITS.filter((s) => counts[s] === 0).length;
+    const longSuit = Math.max(...SUITS.map((s) => counts[s]));
     const mock = biddingMockFromState(state, this.playerId);
     const compulsory = state.compulsoryKlop === true;
 
@@ -91,7 +95,21 @@ export class HeuristicBot implements TarokBot {
       return undefined;
     };
 
-    // Level 5 with a monster hand: try solo / solo_brez under compulsory klop
+    // Monster hands → high solos / valat
+    if (this.difficulty >= 5 && taroksCount >= 11 && hasSkis && hasMond) {
+      const b = tryBid("valat");
+      if (b) return b;
+    }
+    if (
+      this.difficulty >= 5 &&
+      !compulsory &&
+      voids >= 2 &&
+      longSuit >= 6 &&
+      taroksCount <= 5
+    ) {
+      const b = tryBid("barvni_valat");
+      if (b) return b;
+    }
     if (this.difficulty >= 5 && taroksCount >= 10 && hasSkis && hasMond) {
       const b = tryBid(compulsory ? "solo_brez" : "solo_tri");
       if (b) return b;
@@ -100,6 +118,25 @@ export class HeuristicBot implements TarokBot {
       const b = tryBid(compulsory ? "solo_brez" : "solo_dve");
       if (b) return b;
     }
+    if (this.difficulty >= 4 && taroksCount >= 9 && hasSkis && kings >= 2) {
+      const b = tryBid(compulsory ? "solo_brez" : "solo_ena");
+      if (b) return b;
+    }
+
+    // Weak hand → berač / odprti berač (level 4+)
+    if (!compulsory && this.difficulty >= 4) {
+      const lowPoints = points <= 12;
+      const fewTaroks = taroksCount <= 3;
+      if (lowPoints && fewTaroks && voids >= 1) {
+        if (this.difficulty >= 5 && taroksCount <= 2) {
+          const b = tryBid("odprti_berac");
+          if (b) return b;
+        }
+        const b = tryBid("berac");
+        if (b) return b;
+      }
+    }
+
     if (!compulsory) {
       if (taroksCount >= 9 && this.difficulty >= 4) {
         const b = tryBid("ena");
@@ -251,16 +288,93 @@ export class HeuristicBot implements TarokBot {
     if (this.difficulty < 4) return [];
     const myHand = state.hands[this.playerId] || [];
     const anns: AnnouncementType[] = [];
-    if (hasTrula(myHand)) anns.push("trula");
-    if (hasAllKings(myHand)) anns.push("kralji");
+    const tryAnn = (t: AnnouncementType) => {
+      if (canMakeAnnouncement(state, this.playerId, t)) anns.push(t);
+    };
+
+    if (hasTrula(myHand)) tryAnn("trula");
+    if (hasAllKings(myHand)) tryAnn("kralji");
+
+    const taroks = myHand.filter(isTarokCard).length;
     if (
       this.difficulty >= 5 &&
       myHand.some((c) => isTarokCard(c) && c.rank === 1) &&
-      myHand.filter(isTarokCard).length >= 8
+      taroks >= 8
     ) {
-      anns.push("pagat_ultimo");
+      tryAnn("pagat_ultimo");
     }
+
+    // Kralj ultimo: hold called king + enough control
+    if (
+      this.difficulty >= 5 &&
+      state.calledKing &&
+      myHand.some(
+        (c) =>
+          isSuitCard(c) &&
+          c.rank === "king" &&
+          c.suit === state.calledKing!.suit,
+      ) &&
+      taroks >= 6
+    ) {
+      tryAnn("kralj_ultimo");
+    }
+
+    // Valat announce on monster active-team hands
+    if (
+      this.difficulty >= 5 &&
+      taroks >= 10 &&
+      myHand.some((c) => isTarokCard(c) && c.rank === "skis") &&
+      myHand.some((c) => isTarokCard(c) && c.rank === 21)
+    ) {
+      tryAnn("valat");
+    }
+
     return anns;
+  }
+
+  /** Kontra / rekontra when the opponent's bid or announcement looks beatable. */
+  chooseContra(state: GameState): ContraTarget | undefined {
+    if (this.difficulty < 4) return undefined;
+    if (state.phase !== "announcements" || !state.announcementsRound) return undefined;
+
+    const declarerTeam =
+      state.teams?.declarerTeam ??
+      (state.declarer !== undefined ? [state.declarer] : []);
+    const round = state.announcementsRound;
+    const myHand = state.hands[this.playerId] || [];
+    const taroks = myHand.filter(isTarokCard).length;
+    const onDeclarer = declarerTeam.includes(this.playerId);
+
+    // Kontra on game: defenders with strong hands vs low contracts
+    if (
+      !onDeclarer &&
+      canPlaceContra(round, this.playerId, "game", declarerTeam) &&
+      taroks >= 6 &&
+      (state.contract === "tri" || state.contract === "dve" || state.contract === "ena")
+    ) {
+      return "game";
+    }
+
+    // Rekontra as declarer with a strong hand
+    if (
+      onDeclarer &&
+      canPlaceContra(round, this.playerId, "game", declarerTeam) &&
+      this.difficulty >= 5 &&
+      taroks >= 8
+    ) {
+      return "game";
+    }
+
+    // Kontra on opponent announcements we expect to beat
+    for (const t of ["trula", "kralji", "pagat_ultimo", "valat"] as const) {
+      if (!canPlaceContra(round, this.playerId, t, declarerTeam)) continue;
+      if (t === "trula" && hasTrula(myHand)) return t;
+      if (t === "kralji" && hasAllKings(myHand)) return t;
+      if (t === "pagat_ultimo" && taroks >= 7) return t;
+      if (t === "valat" && taroks >= 8) return t;
+    }
+
+    return undefined;
   }
 
   /** After solo talon: raise to barvni valat if the hand looks like a colour sweep. */
@@ -286,12 +400,7 @@ export class HeuristicBot implements TarokBot {
     const isNegat = state.contract === "berac" || state.contract === "odprti_berac";
     const isBarvni = state.contract === "barvni_valat";
     const winnerFn = isBarvni ? getBarvniValatTrickWinner : getTrickWinner;
-    const legalPlays =
-      isBarvni && state.declarer === this.playerId
-        ? getBarvniValatLegalPlays(hand, trick)
-        : isKlop || isNegat
-          ? getKlopLegalPlays(hand, trick)
-          : getLegalPlays(hand, trick);
+    const legalPlays = getGameLegalPlays(state, this.playerId, hand);
     if (legalPlays.length === 1) return legalPlays[0]!;
 
     if (this.difficulty === 1) {

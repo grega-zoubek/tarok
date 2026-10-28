@@ -307,20 +307,24 @@ export function useTarokGame() {
             }
               
             case "announcements": {
-              const anns = currentBot.chooseAnnouncements(gameState);
-              if (anns.length > 0) {
-                let annState = gameState;
-                for (const ann of anns) {
-                  try {
-                    annState = dispatchAnnouncement(annState, currentBot.playerId, ann);
-                  } catch {
-                    // Napoved morda ni dovoljena (npr. kralj ultimo) — preskoči
-                  }
+              let annState = gameState;
+              const contra = currentBot.chooseContra?.(annState);
+              if (contra) {
+                try {
+                  annState = dispatchContra(annState, currentBot.playerId, contra);
+                } catch {
+                  // Kontra morda ni več veljavna
                 }
-                nextState = dispatchAnnouncementPass(annState, currentBot.playerId);
-              } else {
-                nextState = dispatchAnnouncementPass(gameState, currentBot.playerId);
               }
+              const anns = currentBot.chooseAnnouncements(annState);
+              for (const ann of anns) {
+                try {
+                  annState = dispatchAnnouncement(annState, currentBot.playerId, ann);
+                } catch {
+                  // Napoved morda ni dovoljena — preskoči
+                }
+              }
+              nextState = dispatchAnnouncementPass(annState, currentBot.playerId);
               break;
             }
               
@@ -405,11 +409,10 @@ export function useTarokGame() {
       try {
         const score = calculateGameScore(gameState);
 
-        // Radlci aktivne ekipe (deklarant + partner)
-        const declarerTeam = gameState.teams?.declarerTeam ?? [];
-        const declarerRadlciCount = declarerTeam.reduce(
-          (max, pid) => Math.max(max, playerRadlci[pid] ?? 0), 0
-        );
+        // stevec: radlc aktivnega igralca (deklaranta), ne partnerja
+        const declarerId = gameState.declarer;
+        const declarerRadlciCount =
+          declarerId !== undefined ? (playerRadlci[declarerId] ?? 0) : 0;
 
         // Klop ima posebno logiko radlcev
         let finalValue: number;
@@ -425,7 +428,7 @@ export function useTarokGame() {
         }
 
         // Posodobi radlce:
-        // - Aktivni: če zmaga, porabi radlce (reset na 0); sicer ohrani
+        // - Aktivni igralec: če zmaga, porabi svoj radlc (reset na 0)
         // - Vsi: dobijo +newRadlciEarned
         setPlayerRadlci(prev => {
           const next = [...prev];
@@ -436,17 +439,14 @@ export function useTarokGame() {
             for (const winnerId of (score.klopWinners ?? [])) {
               next[winnerId] = 0;
             }
-          } else {
-            if (score.isWin && radlciUsed > 0) {
-              for (const pid of declarerTeam) {
-                next[pid] = 0;
-              }
-            }
+          } else if (score.isWin && radlciUsed > 0 && declarerId !== undefined) {
+            next[declarerId] = 0;
           }
           return next;
         });
 
         // ── Delta točk za vsakega igralca ────────────────────────────────
+        // Družabno pisanje: piše samo aktivna ekipa; branilci 0.
         const perPlayerDelta = [0, 0, 0, 0];
         let roundFinalValue = finalValue;
 
@@ -468,15 +468,12 @@ export function useTarokGame() {
           roundFinalValue = perPlayerDelta[0] ?? 0;
         } else {
           const declarerTeamIds = new Set(gameState.teams?.declarerTeam ?? []);
-          const defendingTeamIds = new Set(gameState.teams?.defendingTeam ?? []);
-          const declarerWon = score.isWin;
 
           for (const pid of gameState.playerOrder) {
             if (declarerTeamIds.has(pid)) {
               perPlayerDelta[pid] = roundFinalValue;
-            } else if (defendingTeamIds.has(pid)) {
-              perPlayerDelta[pid] = declarerWon ? 0 : -roundFinalValue;
             }
+            // branilci ostanejo 0 (razen mondfang spodaj)
           }
         }
 
