@@ -212,6 +212,40 @@ export function getBarvniValatLegalPlays(hand: readonly Card[], trick: Trick): C
   return getLegalPlays(hand, trick);
 }
 
+/**
+ * Barvni valat: taroki NISO aduti.
+ * - Če je vodilna barvna karta, zmaga najvišja karta te barve (tarok = odvržek).
+ * - Če je vodilni tarok, zmaga najvišji tarok (barvne = odvržek).
+ * Cesarski štih (pagat vzame trulo) se ne uporablja.
+ */
+export function getBarvniValatTrickWinner(trick: Trick): PlayedCard {
+  const [lead] = trick.plays;
+  if (lead === undefined) {
+    throw new RangeError("Cannot determine a winner for an empty trick");
+  }
+
+  if (isSuitCard(lead.card)) {
+    const ledSuit = lead.card.suit;
+    const suitPlays = trick.plays
+      .filter(isSuitPlay)
+      .filter((play) => play.card.suit === ledSuit);
+    if (suitPlays.length === 0) {
+      throw new Error("A suit-led colour-valat trick must contain the lead suit");
+    }
+    return suitPlays.reduce((winner, candidate) =>
+      suitStrength(candidate.card) > suitStrength(winner.card) ? candidate : winner,
+    );
+  }
+
+  const tarokPlays = trick.plays.filter(isTarokPlay);
+  if (tarokPlays.length === 0) {
+    throw new Error("A tarok-led colour-valat trick must contain a tarok");
+  }
+  return tarokPlays.reduce((winner, candidate) =>
+    compareTaroks(candidate.card, winner.card) > 0 ? candidate : winner,
+  );
+}
+
 export function isLegalPlay(
   hand: readonly Card[],
   trick: Trick,

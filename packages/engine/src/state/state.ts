@@ -13,7 +13,7 @@ import {
   type ContraTarget,
   getCurrentAnnouncingPlayer,
 } from "../announcements/announcements.js";
-import { getBarvniValatLegalPlays } from "../trick/trick.js";
+import { getBarvniValatLegalPlays, getBarvniValatTrickWinner } from "../trick/trick.js";
 
 /**
  * Defines the main phases of a complete Tarok game.
@@ -446,7 +446,10 @@ export function dispatchPlay(state: GameState, playerId: PlayerId, card: Card): 
   let remainingTalonToDeclarer = state.remainingTalonToDeclarer;
 
   if (isTrickComplete(nextTrickRound)) {
-    nextTrickRound = beginNextTrick(nextTrickRound);
+    nextTrickRound = beginNextTrick(
+      nextTrickRound,
+      state.contract === "barvni_valat" ? getBarvniValatTrickWinner : undefined,
+    );
 
     const lastTrick = nextTrickRound.capturedTricks[nextTrickRound.capturedTricks.length - 1];
     if (lastTrick && state.declarer !== undefined) {

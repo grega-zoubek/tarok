@@ -58,6 +58,7 @@ describe("HeuristicBot", () => {
 
       const activeState = {
         ...dummyState,
+        // No calledKing → teams are public (solo / already known)
         teams: {
           declarerTeam: [0, 1], // Bot (1) is partner with 0
           defendingTeam: [2, 3]
@@ -79,6 +80,42 @@ describe("HeuristicBot", () => {
       // Bot should "schmear" the king to its partner.
       const play = bot.choosePlay(activeState as GameState, hand);
       expect(play).toEqual({ kind: "suit", suit: "hearts", rank: "king" });
+    });
+
+    it("does not use secret partner knowledge before called king is played", () => {
+      const bot = new HeuristicBot(1, 5);
+      const hand: Card[] = [
+        { kind: "suit", suit: "hearts", rank: "king" },
+        { kind: "suit", suit: "hearts", rank: "two" },
+      ];
+
+      const activeState = {
+        ...dummyState,
+        calledKing: { suit: "spades" as const, rank: "king" as const },
+        teams: {
+          declarerTeam: [0, 1],
+          defendingTeam: [2, 3],
+        },
+        trickRound: createTrickRound({
+          playerOrder: [0, 1, 2, 3],
+          hands: [
+            { playerId: 1, cards: hand },
+            { playerId: 0, cards: [] },
+            { playerId: 2, cards: [] },
+            { playerId: 3, cards: [] },
+          ],
+          leader: 0,
+        }),
+      };
+
+      activeState.trickRound.currentTrick.plays.push({
+        playerId: 0,
+        card: { kind: "tarok", rank: "skis", name: "skis" },
+      });
+
+      // Without knowing 0 is partner, bot should dump the low card, not schmear the king.
+      const play = bot.choosePlay(activeState as GameState, hand);
+      expect(play).toEqual({ kind: "suit", suit: "hearts", rank: "two" });
     });
   });
 });

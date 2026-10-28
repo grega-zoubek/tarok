@@ -287,9 +287,23 @@ export function useTarokGame() {
               }
               break;
               
-            case "announcements":
-              nextState = dispatchAnnouncementPass(gameState, currentBot.playerId);
+            case "announcements": {
+              const anns = currentBot.chooseAnnouncements(gameState);
+              if (anns.length > 0) {
+                let annState = gameState;
+                for (const ann of anns) {
+                  try {
+                    annState = dispatchAnnouncement(annState, currentBot.playerId, ann);
+                  } catch {
+                    // Napoved morda ni dovoljena (npr. kralj ultimo) — preskoči
+                  }
+                }
+                nextState = dispatchAnnouncementPass(annState, currentBot.playerId);
+              } else {
+                nextState = dispatchAnnouncementPass(gameState, currentBot.playerId);
+              }
               break;
+            }
               
             case "playing":
               const botHandInRound = gameState.trickRound?.hands.find(h => h.playerId === currentBot.playerId)?.cards;
