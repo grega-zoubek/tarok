@@ -77,6 +77,7 @@ function createMockFinishedGameState(): GameState {
     talonGroups: [],
     radlci: { 0: 0, 1: 0, 2: 0, 3: 0 },
     trickRound,
+    compulsoryKlop: false,
   };
 }
 

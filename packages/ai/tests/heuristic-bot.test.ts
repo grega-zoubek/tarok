@@ -17,6 +17,46 @@ describe("HeuristicBot", () => {
     });
   });
 
+  describe("Discards & raise", () => {
+    it("prefers voiding a short suit when discarding (level 3+)", () => {
+      const bot = new HeuristicBot(0, 4);
+      const hand: Card[] = [
+        { kind: "suit", suit: "hearts", rank: "seven" },
+        { kind: "suit", suit: "hearts", rank: "eight" },
+        { kind: "suit", suit: "clubs", rank: "queen" },
+        { kind: "suit", suit: "clubs", rank: "cavalier" },
+        { kind: "suit", suit: "clubs", rank: "jack" },
+        { kind: "suit", suit: "clubs", rank: "seven" },
+        { kind: "tarok", rank: 10, name: "x" },
+      ];
+      const discards = bot.chooseDiscards(dummyState, hand, 2);
+      expect(discards).toHaveLength(2);
+      expect(discards.every((c) => c.kind === "suit" && c.suit === "hearts")).toBe(true);
+    });
+
+    it("does not raise to barvni valat on weak hands", () => {
+      const bot = new HeuristicBot(0, 5);
+      const state = {
+        ...dummyState,
+        contract: "solo_tri" as const,
+        hands: {
+          0: [
+            { kind: "tarok", rank: "skis", name: "skis" },
+            { kind: "tarok", rank: 21, name: "mond" },
+            { kind: "tarok", rank: 15, name: "xv" },
+            { kind: "tarok", rank: 10, name: "x" },
+            { kind: "suit", suit: "hearts", rank: "king" },
+            { kind: "suit", suit: "spades", rank: "seven" },
+            { kind: "suit", suit: "clubs", rank: "eight" },
+            { kind: "suit", suit: "diamonds", rank: "nine" },
+          ] as Card[],
+          1: [], 2: [], 3: [],
+        },
+      };
+      expect(bot.chooseRaiseToBarvniValat(state as GameState)).toBe(false);
+    });
+  });
+
   describe("Level 4+ (Protecting Mond)", () => {
     it("avoids playing Mond if Škis is not played and it can play something else", () => {
       const bot = new HeuristicBot(1, 4);

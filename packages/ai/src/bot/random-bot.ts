@@ -22,6 +22,9 @@ export interface TarokBot {
   
   /** Decide which announcements to make */
   chooseAnnouncements(state: GameState): readonly AnnouncementType[];
+
+  /** After solo talon exchange: optionally raise to barvni valat */
+  chooseRaiseToBarvniValat?(state: GameState): boolean;
   
   /** Decide which card to play in the current trick */
   choosePlay(state: GameState, hand: readonly Card[]): Card;

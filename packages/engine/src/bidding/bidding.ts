@@ -37,11 +37,14 @@ export interface BiddingRound {
   readonly passedPlayers: readonly PlayerId[];
   readonly currentHighestBid: { readonly playerId: PlayerId; readonly bid: Bid } | undefined;
   readonly isFinished: boolean;
+  /** Obvezni klop: licitacije do berača vključno niso dovoljene. */
+  readonly compulsoryKlop?: boolean;
 }
 
 export interface BiddingRoundConfig {
   readonly playerOrder: readonly PlayerId[];
   readonly forehand: PlayerId;
+  readonly compulsoryKlop?: boolean;
 }
 
 /**
@@ -75,6 +78,7 @@ export function createBiddingRound(config: BiddingRoundConfig): BiddingRound {
     passedPlayers: [],
     currentHighestBid: undefined,
     isFinished: false,
+    compulsoryKlop: config.compulsoryKlop === true,
   };
 }
 
@@ -83,15 +87,35 @@ export function getCurrentBiddingPlayer(round: BiddingRound): PlayerId | undefin
   return round.playerOrder[round.currentPlayerIndex];
 }
 
+/** Najnižja dovoljena licitacija pri obveznem klopu (solo_brez in višje). */
+export const COMPULSORY_KLOP_MIN_BID: Bid = "solo_brez";
+
+/** Solo pogodbe, ki jih gre po talonu dvigniti v barvni valat. */
+export const SOLO_RAISABLE_TO_BARVNI = new Set<Bid>(["solo_tri", "solo_dve", "solo_ena"]);
+
+export function isBidAllowedInCompulsoryKlop(bid: Bid): boolean {
+  return getBidPriority(bid) >= getBidPriority(COMPULSORY_KLOP_MIN_BID);
+}
+
 /**
  * Returns whether a given bid is legal for the current player.
+ * @param compulsoryKlop — pri obveznem klopu so licitacije do berača vključno prepovedane
  */
-export function isLegalBid(round: BiddingRound, playerId: PlayerId, bid: Bid): boolean {
+export function isLegalBid(
+  round: BiddingRound,
+  playerId: PlayerId,
+  bid: Bid,
+  compulsoryKlop = false,
+): boolean {
   if (round.isFinished || getCurrentBiddingPlayer(round) !== playerId) {
     return false;
   }
 
-  // If there's no highest bid yet, any bid is legal
+  if (compulsoryKlop && !isBidAllowedInCompulsoryKlop(bid)) {
+    return false;
+  }
+
+  // If there's no highest bid yet, any (allowed) bid is legal
   if (!round.currentHighestBid) {
     return true;
   }
@@ -117,7 +141,7 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
     throw new Error(`It is not player ${playerId}'s turn to bid`);
   }
 
-  if (action !== PASS && !isLegalBid(round, playerId, action)) {
+  if (action !== PASS && !isLegalBid(round, playerId, action, round.compulsoryKlop === true)) {
     throw new Error(`Neveljavna licitacija ${action} za igralca ${playerId}`);
   }
 
@@ -166,6 +190,7 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
     currentHighestBid: nextHighestBid,
     isFinished,
     currentPlayerIndex: isFinished ? -1 : nextPlayerIndex,
+    compulsoryKlop: round.compulsoryKlop === true,
   };
 }
 

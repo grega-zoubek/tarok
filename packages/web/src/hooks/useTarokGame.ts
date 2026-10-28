@@ -12,6 +12,7 @@ import {
   dispatchCall,
   dispatchTalonPick,
   dispatchDiscard,
+  dispatchRaiseToBarvniValat,
   dispatchAnnouncement,
   dispatchAnnouncementPass,
   dispatchContra,
@@ -82,6 +83,8 @@ export function useTarokGame() {
   const [playerScores, setPlayerScores] = useState<number[]>([0, 0, 0, 0]);
   // Napaka za prikaz v UI
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Naslednji krog je obvezni klop (točno 0 točk ali po delitvi brez taroka)
+  const pendingCompulsoryKlopRef = useRef(false);
 
   // Tracks pending trick-animation timers so we can cancel them on round reset
   const trickTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -157,6 +160,7 @@ export function useTarokGame() {
   // Initialize game
   const startGame = (settings: GameSettings) => {
     sessionStorage.removeItem("tarokSession");
+    pendingCompulsoryKlopRef.current = false;
     setGameSettings(settings);
     setCurrentRound(1);
     setHistory([]);
@@ -180,7 +184,11 @@ export function useTarokGame() {
     trickTimersRef.current = [];
     scoringScheduledRef.current = false;
 
-    // »Brez taroka ni taroka« — ponovno deli, dokler ima vsak vsaj en tarok
+    // Obvezni klop iz prejšnjega kroga (točno 0 točk) ali po delitvi brez taroka
+    let compulsoryKlop = pendingCompulsoryKlopRef.current;
+    pendingCompulsoryKlopRef.current = false;
+
+    // »Brez taroka ni taroka« — eno ponovno deljenje sproži obvezni klop
     let dealResult;
     let attempts = 0;
     do {
@@ -188,6 +196,9 @@ export function useTarokGame() {
       const randomSeed = Math.floor(Math.random() * 1000000) + attempts;
       deck = shuffle(deck, createSeededRng(randomSeed));
       dealResult = deal(deck, { playerCount: 4 });
+      if (anyHandMissingTarok(dealResult.hands)) {
+        compulsoryKlop = true;
+      }
       attempts += 1;
     } while (anyHandMissingTarok(dealResult.hands) && attempts < 50);
 
@@ -203,6 +214,7 @@ export function useTarokGame() {
       forehand: ((roundNum - 1) % 4) as PlayerId,
       initialHands,
       initialTalon: dealResult.talon,
+      compulsoryKlop,
     });
 
     const newBots = settings.botConfigs.map((config, index) => 
@@ -258,8 +270,9 @@ export function useTarokGame() {
                     ? { playerId: gameState.declarer!, bid: gameState.contract as Bid }
                     : undefined,
                   isFinished: false,
+                  compulsoryKlop: gameState.compulsoryKlop,
                 };
-                if (!isLegalBid(mockRound, currentBot.playerId, bid as Bid)) {
+                if (!isLegalBid(mockRound, currentBot.playerId, bid as Bid, gameState.compulsoryKlop)) {
                   bid = PASS;
                 }
               }
@@ -286,6 +299,12 @@ export function useTarokGame() {
                 nextState = dispatchDiscard(gameState, currentBot.playerId, discards);
               }
               break;
+
+            case "raising": {
+              const raise = currentBot.chooseRaiseToBarvniValat?.(gameState) ?? false;
+              nextState = dispatchRaiseToBarvniValat(gameState, currentBot.playerId, raise);
+              break;
+            }
               
             case "announcements": {
               const anns = currentBot.chooseAnnouncements(gameState);
@@ -466,8 +485,14 @@ export function useTarokGame() {
           perPlayerDelta[score.mondfangPlayerId] += score.mondfang; // -21
         }
 
-        // Posodobi kumulativne točke
-        setPlayerScores(prev => prev.map((s, i) => s + (perPlayerDelta[i] ?? 0)));
+        // Posodobi kumulativne točke; točno 0 → obvezni klop naslednji krog
+        setPlayerScores(prev => {
+          const next = prev.map((s, i) => s + (perPlayerDelta[i] ?? 0));
+          if (next.some((s) => s === 0)) {
+            pendingCompulsoryKlopRef.current = true;
+          }
+          return next;
+        });
 
         setRoundScore(score);
         setHistory(prev => [...prev, {
@@ -530,6 +555,15 @@ export function useTarokGame() {
     if (!gameState || gameState.phase !== "talon" || gameState.currentPlayer !== HUMAN_PLAYER) return;
     try {
       setGameState(dispatchDiscard(gameState, HUMAN_PLAYER, cards));
+    } catch (e) {
+      setErrorMessage((e as Error).message);
+    }
+  };
+
+  const playRaise = (raise: boolean) => {
+    if (!gameState || gameState.phase !== "raising" || gameState.currentPlayer !== HUMAN_PLAYER) return;
+    try {
+      setGameState(dispatchRaiseToBarvniValat(gameState, HUMAN_PLAYER, raise));
     } catch (e) {
       setErrorMessage((e as Error).message);
     }
@@ -630,6 +664,7 @@ export function useTarokGame() {
     playCall,
     playTalonPick,
     playDiscard,
+    playRaise,
     playAnnouncement,
     playAnnouncementPass,
     playContra,

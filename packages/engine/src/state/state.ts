@@ -1,5 +1,13 @@
 import { type Card, isSuitCard, isTarokCard, cardsEqual, cardKey } from "../cards/card.js";
-import { type PlayerId, type Bid, type BiddingAction, placeBid, getCurrentBiddingPlayer, resolveBidding } from "../bidding/bidding.js";
+import {
+  type PlayerId,
+  type Bid,
+  type BiddingAction,
+  placeBid,
+  getCurrentBiddingPlayer,
+  resolveBidding,
+  SOLO_RAISABLE_TO_BARVNI,
+} from "../bidding/bidding.js";
 import { type CalledKing, type Teams, determineTeams } from "../calling/calling.js";
 import { type TrickRound, createTrickRound, playTurn, playTurnKlop, beginNextTrick, isTrickComplete, getCurrentPlayer } from "../game/trick-round.js";
 import { pickTalonGroup, createTalonExchange, discardCards } from "../talon/talon.js";
@@ -22,6 +30,7 @@ export type GamePhase =
   | "bidding"
   | "calling"
   | "talon"
+  | "raising"
   | "announcements"
   | "playing"
   | "finished";
@@ -59,6 +68,12 @@ export interface GameState {
   readonly trickRound: TrickRound | undefined;
 
   readonly radlci: Record<PlayerId, number>;
+
+  /**
+   * Obvezni klop: po delitvi brez taroka ali ko ima igralec točno 0 točk.
+   * Licitacije do berača vključno niso dovoljene (najnižja = solo_brez).
+   */
+  readonly compulsoryKlop: boolean;
 }
 
 export interface GameStateConfig {
@@ -66,6 +81,7 @@ export interface GameStateConfig {
   readonly forehand: PlayerId;
   readonly initialHands: Record<PlayerId, readonly Card[]>;
   readonly initialTalon: readonly Card[];
+  readonly compulsoryKlop?: boolean;
 }
 
 export function createInitialGameState(config: GameStateConfig): GameState {
@@ -100,6 +116,7 @@ export function createInitialGameState(config: GameStateConfig): GameState {
     trickRound: undefined,
 
     radlci: Object.fromEntries(config.playerOrder.map(pid => [pid, 0])) as Record<PlayerId, number>,
+    compulsoryKlop: config.compulsoryKlop === true,
   };
 }
 
@@ -117,6 +134,7 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
     passedPlayers: state.passedPlayers,
     currentHighestBid: state.contract && state.contract !== "klop" ? { playerId: state.declarer!, bid: state.contract as Bid } : undefined,
     isFinished: false,
+    compulsoryKlop: state.compulsoryKlop,
   };
 
   const nextBiddingRound = placeBid(biddingRound, playerId, action);
@@ -317,6 +335,24 @@ export function dispatchDiscard(state: GameState, playerId: PlayerId, discardedC
   // Remove discarded cards from hand
   const newHand = currentHand.filter(card => !discardedCards.some(dc => cardsEqual(card, dc)));
 
+  // Solo tri/dve/ena: po založitvi lahko deklarant dvigne v barvni valat
+  const canRaise =
+    state.contract !== undefined &&
+    SOLO_RAISABLE_TO_BARVNI.has(state.contract as Bid);
+
+  if (canRaise) {
+    return {
+      ...state,
+      phase: "raising",
+      discardedCards: result.discardedCards,
+      hands: {
+        ...state.hands,
+        [playerId]: newHand,
+      },
+      currentPlayer: state.declarer,
+    };
+  }
+
   return {
     ...state,
     phase: "announcements",
@@ -326,6 +362,47 @@ export function dispatchDiscard(state: GameState, playerId: PlayerId, discardedC
       [playerId]: newHand,
     },
     // Napovedi začne aktivni igralec
+    announcementsRound: createAnnouncementsRound(state.playerOrder, state.declarer!, state.declarer!),
+    currentPlayer: state.declarer,
+  };
+}
+
+/**
+ * Po solo talonu: dvigni pogodbo v barvni valat (true) ali nadaljuj z napovedmi (false).
+ */
+export function dispatchRaiseToBarvniValat(state: GameState, playerId: PlayerId, raise: boolean): GameState {
+  if (state.phase !== "raising") {
+    throw new Error(`Cannot raise contract in phase ${state.phase}`);
+  }
+  if (state.currentPlayer !== playerId || state.declarer !== playerId) {
+    throw new Error(`Only declarer ${state.declarer} can raise, not player ${playerId}`);
+  }
+  if (!state.contract || !SOLO_RAISABLE_TO_BARVNI.has(state.contract as Bid)) {
+    throw new Error(`Contract ${state.contract} cannot be raised to barvni valat`);
+  }
+
+  if (raise) {
+    // Barvni valat: brez napovedi/bonusov, deklarant vodi prvi štih
+    return {
+      ...state,
+      phase: "playing",
+      contract: "barvni_valat",
+      trickRound: createTrickRound({
+        playerOrder: state.playerOrder,
+        hands: Object.entries(state.hands).map(([id, cards]) => ({
+          playerId: Number(id),
+          cards,
+        })),
+        leader: state.declarer!,
+      }),
+      currentPlayer: state.declarer,
+      announcementsRound: undefined,
+    };
+  }
+
+  return {
+    ...state,
+    phase: "announcements",
     announcementsRound: createAnnouncementsRound(state.playerOrder, state.declarer!, state.declarer!),
     currentPlayer: state.declarer,
   };
@@ -396,6 +473,16 @@ export function dispatchAnnouncementPass(state: GameState, playerId: PlayerId): 
   const nextRound = passAnnouncements(state.announcementsRound, playerId);
 
   if (nextRound.isFinished) {
+    // Barvni valat / valat / berač-stili: deklarant vodi; sicer forehand
+    const declarerLeads =
+      state.contract === "barvni_valat" ||
+      state.contract === "valat" ||
+      state.contract === "berac" ||
+      state.contract === "odprti_berac" ||
+      state.contract === "solo_brez";
+    const leader = declarerLeads && state.declarer !== undefined
+      ? state.declarer
+      : state.forehand;
     return {
       ...state,
       phase: "playing",
@@ -403,9 +490,9 @@ export function dispatchAnnouncementPass(state: GameState, playerId: PlayerId): 
       trickRound: createTrickRound({
         playerOrder: state.playerOrder,
         hands: Object.entries(state.hands).map(([id, cards]) => ({ playerId: Number(id), cards })),
-        leader: state.forehand,
+        leader,
       }),
-      currentPlayer: state.forehand,
+      currentPlayer: leader,
     };
   }
 

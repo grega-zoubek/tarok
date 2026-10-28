@@ -11,6 +11,7 @@ import { describe, it, expect } from "vitest";
 import {
   createTarokDeck, shuffle, deal, createInitialGameState, createSeededRng,
   dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard,
+  dispatchRaiseToBarvniValat,
   dispatchAnnouncementPass, dispatchPlay, PASS, isLegalBid,
   calculateGameScore, applyRadlci, countPoints,
   type Bid, type GameState, type PlayerId,
@@ -95,6 +96,12 @@ function playOneGame(seed: number, forehand: PlayerId): GameState {
           const discards = bot.chooseDiscards(state, state.hands[pid]!, exchangeCount);
           state = dispatchDiscard(state, pid, discards);
         }
+        break;
+      }
+
+      case "raising": {
+        const raise = bot.chooseRaiseToBarvniValat(state);
+        state = dispatchRaiseToBarvniValat(state, pid, raise);
         break;
       }
 
