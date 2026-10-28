@@ -12,9 +12,10 @@ Implementiran je celoten tok igre po uradnih pravilih (glej [stevec-taroka.si/pr
 | Licitacija | Vse pogodbe (tri … valat), privilegij forehanda, klop ob vseh »naprej« |
 | Klicanje | Klic kralja (igre s partnerjem); solo, če je kralj v talonu ali pri deklarantu |
 | Talon | Izbira kupčka (3/2/1), zaloga (brez trule/kraljev), odkriti odloženi taroki |
+| Dvig | Po solo talonu: opcijski dvig v barvni valat |
 | Napovedi | Trula, kralji, pagat/kralj ultimo, valat; kontra / rekontra / sub / mord |
 | Igra | Barvanje, jemanje s tarokom, posebna pravila za klop/berač/odprti berač/valat/barvni valat |
-| Posebnosti | Mondfang, radlci, zgodnji konec berača/valata, odprta roka pri odprtem beraču |
+| Posebnosti | Mondfang, radlci, obvezni klop (0 točk / delitev brez taroka), zgodnji konec berača/valata, odprta roka pri odprtem beraču |
 
 ## Izjema: štetje (counting)
 

@@ -69,6 +69,7 @@ function App() {
     playCall,
     playTalonPick,
     playDiscard,
+    playRaise,
     playAnnouncement,
     playAnnouncementPass,
     playContra,
@@ -382,7 +383,7 @@ function App() {
           <div className="flex flex-col">
             <span className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Faza</span>
             <span className="text-lg font-bold">{
-              ({ bidding: "LICITACIJA", calling: "KLICANJE", talon: "TALON", announcements: "NAPOVEDI", playing: "IGRA", finished: "KONEC" } as const)[gameState.phase]
+              ({ bidding: "LICITACIJA", calling: "KLICANJE", talon: "TALON", raising: "DVIG", announcements: "NAPOVEDI", playing: "IGRA", finished: "KONEC" } as const)[gameState.phase]
             }</span>
           </div>
           
@@ -394,6 +395,11 @@ function App() {
                 {gameState.contract ? (BID_SL[gameState.contract] ?? gameState.contract).toUpperCase() : "..."}
               </span>
             </div>
+            {gameState.compulsoryKlop && gameState.phase === "bidding" && (
+              <div className="text-center bg-orange-500/15 px-4 py-1 rounded-full border border-orange-500/30">
+                <span className="text-orange-300 text-xs block font-bold">OBVEZNI KLOP</span>
+              </div>
+            )}
 
             {gameState.calledKing && (
               <div className="text-center bg-blue-500/10 px-4 py-1 rounded-full border border-blue-500/20">
@@ -665,12 +671,18 @@ function App() {
                       ? { playerId: gameState.declarer!, bid: gameState.contract as Bid }
                       : undefined,
                     isFinished: false,
+                    compulsoryKlop: gameState.compulsoryKlop,
                   };
                   return (
                   <div className="flex flex-wrap justify-center gap-3 pointer-events-auto bg-black/60 py-20 px-8 rounded-2xl border-2 border-yellow-500 shadow-2xl backdrop-blur-md mb-4">
                     <p className="w-full text-center text-yellow-400 font-bold mb-3 text-xl">LICITACIJA</p>
+                    {gameState.compulsoryKlop && (
+                      <p className="w-full text-center text-orange-300 text-sm mb-2 font-bold">
+                        Obvezni klop — dovoljene so samo licitacije od solo brez navzgor
+                      </p>
+                    )}
                     {BIDS.map(bid => {
-                      const legal = isLegalBid(mockRound, HUMAN_PLAYER, bid);
+                      const legal = isLegalBid(mockRound, HUMAN_PLAYER, bid, gameState.compulsoryKlop);
                       return (
                       <button
                         key={bid}
@@ -766,6 +778,28 @@ function App() {
                             </button>
                           ))}
                       </div>
+                    </div>
+                  )}
+
+                  {gameState.phase === "raising" && (
+                    <div className="bg-black/60 p-6 rounded-2xl border-2 border-yellow-500 shadow-2xl backdrop-blur-md text-center space-y-4 max-w-sm">
+                      <p className="text-yellow-400 font-bold uppercase tracking-widest text-lg">Dvigni pogodbo?</p>
+                      <p className="text-sm text-gray-200">
+                        Solo si lahko po talonu dvigneš v <span className="text-yellow-300 font-bold">barvni valat</span>
+                        (taroki niso aduti, moraš vzeti vse štihe).
+                      </p>
+                      <button
+                        onClick={() => playRaise(true)}
+                        className="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-xl font-black text-lg"
+                      >
+                        BARVNI VALAT (125)
+                      </button>
+                      <button
+                        onClick={() => playRaise(false)}
+                        className="w-full py-3 bg-blue-700 hover:bg-blue-600 rounded-xl font-bold"
+                      >
+                        Ohrani {(gameState.contract ? BID_SL[gameState.contract] : "solo")?.toUpperCase()}
+                      </button>
                     </div>
                   )}
 

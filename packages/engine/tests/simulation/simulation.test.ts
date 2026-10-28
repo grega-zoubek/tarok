@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { 
   createTarokDeck, shuffle, deal, createInitialGameState, createSeededRng,
-  dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard, 
+  dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard,
+  dispatchRaiseToBarvniValat,
   dispatchAnnouncementPass, dispatchPlay, PASS, isLegalBid, type Bid
 } from "../../src/index.js";
 import { HeuristicBot } from "../../../ai/src/bot/heuristic-bot.js";
@@ -94,6 +95,13 @@ describe("Tarok Game Simulation (4 Bots)", () => {
               console.log(`P${currentPlayerId} discards ${discards.length} cards`);
             }
             break;
+
+          case "raising": {
+            const raise = bot.chooseRaiseToBarvniValat(state);
+            state = dispatchRaiseToBarvniValat(state, currentPlayerId, raise);
+            console.log(`P${currentPlayerId} raise to barvni: ${raise}`);
+            break;
+          }
           
           case "announcements":
             state = dispatchAnnouncementPass(state, currentPlayerId);

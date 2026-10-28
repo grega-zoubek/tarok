@@ -114,7 +114,19 @@ export type {
   TrickWinnerFn,
 } from "./game/trick-round.js";
 export { getCardValue, countPoints, hasTrula, hasAllKings } from "./scoring/scoring.js";
-export { BIDS, PASS, createBiddingRound, getCurrentBiddingPlayer, isLegalBid, placeBid, resolveBidding, getBidPriority } from "./bidding/bidding.js";
+export {
+  BIDS,
+  PASS,
+  createBiddingRound,
+  getCurrentBiddingPlayer,
+  isLegalBid,
+  placeBid,
+  resolveBidding,
+  getBidPriority,
+  COMPULSORY_KLOP_MIN_BID,
+  SOLO_RAISABLE_TO_BARVNI,
+  isBidAllowedInCompulsoryKlop,
+} from "./bidding/bidding.js";
 export type { Bid, Pass, BiddingAction, BiddingRound, BiddingRoundConfig, BiddingResult } from "./bidding/bidding.js";
 export { createCallingRound, isKing, holdsKing, callKing, skipCalling, determineTeams } from "./calling/calling.js";
 export type { CalledKing, CallingRound, Teams } from "./calling/calling.js";
@@ -157,6 +169,7 @@ export {
   dispatchCall,
   dispatchTalonPick,
   dispatchDiscard,
+  dispatchRaiseToBarvniValat,
   dispatchAnnouncement,
   dispatchAnnouncementPass,
   dispatchContra,
