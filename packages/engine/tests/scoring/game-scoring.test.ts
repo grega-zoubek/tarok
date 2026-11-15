@@ -15,7 +15,6 @@ function createMockFinishedGameState(): GameState {
 
   // Declarer takes first 3 talon cards, leaves 3
   const discarded = talon.slice(0, 3);
-  const unpicked = talon.slice(3, 6);
 
   // Let's manually construct trick captures
   // Declarer wins the first trick with 4 cards

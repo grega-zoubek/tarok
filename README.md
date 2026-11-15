@@ -1,36 +1,52 @@
 # Tarok
 
-Cross-platform Slovenian Tarok game platform. The project is built incrementally as a pnpm monorepo with a pure TypeScript game engine at its core.
+Cross-platform Slovenian Tarok game platform. The project is a pnpm monorepo with a
+pure TypeScript game engine at its core, heuristic bots, and a React/Vite web client.
 
-## Architecture
+## Packages
 
-The codebase is organized in layers. Each layer has a single responsibility and depends inward toward the engine:
-
-- **Engine (`packages/engine`)** — authoritative game rules, state, and validation. Pure TypeScript with no browser, React, Node.js, or network dependencies.
-- **AI (future)** — bot decision-making built on top of the engine API.
-- **Server (future)** — authoritative multiplayer sessions, networking, and scaling.
-- **Web (future)** — React + Vite client for the card-table experience.
-- **i18n (future)** — Slovenian, English, and German presentation strings kept out of the engine.
-
-The engine uses injectable randomness so shuffling and dealing are deterministic in tests. Catalog integrity is enforced through explicit validation functions and the test suite, not import-time side effects.
-
-## Phase 1 scope
-
-The current engine foundation includes:
-
-- the 54-card Slovenian Tarok deck model
-- 22 explicit taroks, including Pagat (Tarok I), Mond (Tarok XXI), and Škis as a distinct highest trump
-- 32 explicit suit cards
-- Trula helpers and tarok strength ordering
-- shuffle and four-player deal (4 × 12 hands + 6-card talon)
+- **Engine (`packages/engine`)** — authoritative rules, phases, validation and scoring.
+  Pure TypeScript with no browser, React, Node.js, or network dependencies.
+  Exposes a single reducer (`applyAction`), seeded RNG/deal, replay-friendly state and
+  zero-sum settlement (`settleGame`).
+- **AI (`packages/ai`)** — random and heuristic bots built on the engine API. Bots accept
+  an injectable RNG so simulations and tests are deterministic.
+- **Web (`packages/web`)** — React + Vite client for the card table. The human plays seat 0
+  against three configurable bots; the full game state, radlci and seed are persisted in
+  `sessionStorage`, so a reload resumes the current round.
+- **Server / i18n (future)** — authoritative multiplayer sessions and additional
+  presentation languages. Engine strings are already kept out of UI text.
 
 ## Development
 
+Requires Node.js 20.19+ (Vite 7) and pnpm 9.
+
 ```bash
 pnpm install
-pnpm test
-pnpm typecheck
+pnpm dev        # builds engine + AI, then starts the Vite dev server
+pnpm test       # engine, AI and web tests
+pnpm typecheck  # all packages
+pnpm lint       # ESLint (flat config)
+pnpm build      # engine, AI and production web build
 ```
+
+`pnpm dev` prebuilds the workspace packages because the web app resolves
+`@tarok/engine` and `@tarok/ai` from their `dist/` outputs.
+
+## Rules implemented
+
+- Bidding: `tri`, `dve`, `ena`, solo variants, `solo_brez`, `berac`, `odprti_berac`,
+  `barvni_valat`, `valat`, and `klop` when everyone passes.
+- Called-king partnership, including the forced talon group when the called king is in
+  the talon (declarer plays alone).
+- Talon exchange with legal-discard validation, announcements (trula, kralji,
+  pagat/kralj ultimo, valat) starting with the declarer, and trick play with
+  follow-suit/tarok rules and klop overtaking/pagat protection.
+- Scoring per the public rules: contract values, razlika rounded to 5, bonuses,
+  radlci (declarer-only doubling, reset on win), klop per-player doubling, and
+  mondfang (−21 to the loser, never doubled). Settlement is zero-sum except mondfang.
+- "Brez taroka ni taroka": the web client redeals deterministically (seed is recorded and
+  displayed) until every player holds at least one tarok.
 
 ## Deck summary
 

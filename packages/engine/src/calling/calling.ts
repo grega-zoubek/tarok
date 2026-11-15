@@ -1,24 +1,8 @@
 import type { SuitCard } from "../cards/card.js";
-import type { SuitRankFor, Suit } from "../cards/suit.js";
-import { isSuitCard } from "../cards/card.js";
+import type { Suit } from "../cards/suit.js";
 import { type PlayerId } from "../bidding/bidding.js";
 
 export type CalledKing = { suit: Suit; rank: "king" };
-
-export interface CallingRound {
-  readonly declarer: PlayerId;
-  readonly calledKing: CalledKing | undefined;
-  /** True if the calling phase has been completed. */
-  readonly isFinished: boolean;
-}
-
-export function createCallingRound(declarer: PlayerId): CallingRound {
-  return {
-    declarer,
-    calledKing: undefined,
-    isFinished: false,
-  };
-}
 
 /**
  * Checks if a specific suit card is a King.
@@ -32,47 +16,6 @@ export function isKing(card: SuitCard): card is SuitCard & { rank: "king" } {
  */
 export function holdsKing(hand: readonly SuitCard[], suit: Suit): boolean {
   return hand.some((card) => card.suit === suit && isKing(card));
-}
-
-/**
- * The declarer calls a King. They must not hold all 4 Kings to make a normal call,
- * but in a typical situation, if they hold 3 kings, they can call the 4th.
- * If they hold the king they are calling, they are playing alone (quiet solo).
- */
-export function callKing(round: CallingRound, playerId: PlayerId, suit: Suit): CallingRound {
-  if (round.isFinished) {
-    throw new Error("Calling round is already finished");
-  }
-
-  if (round.declarer !== playerId) {
-    throw new Error(`Only the declarer (player ${round.declarer}) can call a King`);
-  }
-
-  return {
-    ...round,
-    calledKing: { suit, rank: "king" },
-    isFinished: true, // Typically finished right after one call
-  };
-}
-
-/**
- * In Solo games, or games like Berač / Valat, no king is called.
- * This function skips the calling phase.
- */
-export function skipCalling(round: CallingRound, playerId: PlayerId): CallingRound {
-  if (round.isFinished) {
-    throw new Error("Calling round is already finished");
-  }
-
-  if (round.declarer !== playerId) {
-    throw new Error(`Only the declarer (player ${round.declarer}) can skip calling`);
-  }
-
-  return {
-    ...round,
-    calledKing: undefined,
-    isFinished: true,
-  };
 }
 
 /**

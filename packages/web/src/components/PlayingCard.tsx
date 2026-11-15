@@ -1,56 +1,54 @@
 import React from 'react';
-import { type Card } from '@tarok/engine';
+import { type Card, type TarokCard } from '@tarok/engine';
+import { RANK_DISPLAY, SUIT_DISPLAY } from '../lib/card-display';
 
 interface CardProps {
   card: Card;
-  onClick?: () => void;
+  onClick?: (() => void) | undefined;
   disabled?: boolean;
 }
 
-// Map French suits to traditional Tarok suits for display
-const SUIT_DISPLAY: Record<string, { symbol: string; name: string; color: string }> = {
-  hearts:   { symbol: '♥', name: 'Srca',  color: '#dc2626' },
-  diamonds: { symbol: '♦', name: 'Karo', color: '#dc2626' },
-  clubs:    { symbol: '♣', name: 'Križ',  color: '#1f2937' },
-  spades:   { symbol: '♠', name: 'Pik',  color: '#1f2937' },
-};
+/** Riterska oznaka za vogal karte (I..XXI, 0 za škisa). */
+function tarokRankLabel(card: TarokCard): string {
+  if (card.rank === 'skis') return '0';
+  return card.name.toUpperCase();
+}
 
-// Traditional Tarok card names (Slovenian)
-const TAROK_NAMES: Record<number | string, string> = {
-  1: 'Pagat', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
-  6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
-  11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV', 15: 'XV',
-  16: 'XVI', 17: 'XVII', 18: 'XVIII', 19: 'XIX', 20: 'XX',
-  21: 'Mond',
-  skis: 'Škis',
-};
+/** Ime karte na sredini (Pagat, Mond, Škis ali rimska številka). */
+function tarokCenterLabel(card: TarokCard): string {
+  if (card.rank === 'skis') return 'Škis';
+  if (card.rank === 1) return 'Pagat';
+  if (card.rank === 21) return 'Mond';
+  return card.name.toUpperCase();
+}
 
-// Roman numeral display for tarok cards
-const ROMAN: Record<number | string, string> = {
-  1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
-  6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
-  11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV', 15: 'XV',
-  16: 'XVI', 17: 'XVII', 18: 'XVIII', 19: 'XIX', 20: 'XX',
-  21: 'XXI',
-  skis: '0',
-};
+function cardAccessibleName(card: Card): string {
+  if (card.kind === 'tarok') return `Tarok ${tarokCenterLabel(card)}`;
+  const suit = SUIT_DISPLAY[card.suit]?.name ?? card.suit;
+  const rank = RANK_DISPLAY[card.rank] ?? card.rank;
+  return `${suit} ${rank}`;
+}
 
-const RANK_DISPLAY: Record<string, string> = {
-  king: 'K', queen: 'Q', cavalier: 'C', jack: 'J', ace: 'A',
-};
+export const PlayingCard = React.memo(function PlayingCard({ card, onClick, disabled }: CardProps) {
+  const interactive = !disabled && onClick !== undefined;
+  const commonProps = {
+    type: 'button' as const,
+    disabled: !interactive,
+    'aria-label': cardAccessibleName(card),
+    onClick: interactive ? onClick : undefined,
+  };
+  const baseClass = `card disabled:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300 ${
+    interactive ? 'cursor-pointer hover:-translate-y-2 transition-transform' : 'cursor-default'
+  }`;
 
-export function PlayingCard({ card, onClick, disabled }: CardProps) {
-  const isTarok = card.kind === 'tarok';
-
-  if (isTarok) {
-    const rank = card.rank;
-    const roman = ROMAN[rank] ?? String(rank);
-    const isSpecial = rank === 'skis' || rank === 1 || rank === 21;
+  if (card.kind === 'tarok') {
+    const roman = tarokRankLabel(card);
+    const isSpecial = card.rank === 'skis' || card.rank === 1 || card.rank === 21;
 
     return (
-      <div
-        className={`card card-tarok ${disabled ? 'cursor-default' : 'cursor-pointer hover:-translate-y-2 transition-transform'}`}
-        onClick={!disabled ? onClick : undefined}
+      <button
+        {...commonProps}
+        className={`${baseClass} card-tarok`}
         style={{
           background: 'linear-gradient(160deg, #fefce8 0%, #fef9c3 30%, #fde68a 70%, #fcd34d 100%)',
           border: '2.5px solid #92400e',
@@ -72,7 +70,7 @@ export function PlayingCard({ card, onClick, disabled }: CardProps) {
               textShadow: '0 1px 2px rgba(0,0,0,0.15)',
             }}
           >
-            {rank === 'skis' ? '🃏' : rank === 1 ? '👑' : rank === 21 ? '🌙' : '✦'}
+            {card.rank === 'skis' ? '🃏' : card.rank === 1 ? '👑' : card.rank === 21 ? '🌙' : '✦'}
           </div>
           <div
             style={{
@@ -85,7 +83,7 @@ export function PlayingCard({ card, onClick, disabled }: CardProps) {
               marginTop: '2px',
             }}
           >
-            {TAROK_NAMES[rank] ?? ''}
+            {tarokCenterLabel(card)}
           </div>
         </div>
 
@@ -105,19 +103,19 @@ export function PlayingCard({ card, onClick, disabled }: CardProps) {
             pointerEvents: 'none',
           }}
         />
-      </div>
+      </button>
     );
   }
 
   // Suit card
-  const suitInfo = SUIT_DISPLAY[card.suit] ?? SUIT_DISPLAY.hearts!;
+  const suitInfo = SUIT_DISPLAY[card.suit];
   const rankStr = RANK_DISPLAY[card.rank] ?? String(card.rank);
   const isRed = card.suit === 'hearts' || card.suit === 'diamonds';
 
   return (
-    <div
-      className={`card ${disabled ? 'cursor-default' : 'cursor-pointer hover:-translate-y-2 transition-transform'}`}
-      onClick={!disabled ? onClick : undefined}
+    <button
+      {...commonProps}
+      className={baseClass}
       style={{
         background: 'linear-gradient(160deg, #fffef5 0%, #fefce8 40%, #fef9c3 100%)',
         border: `2.5px solid ${isRed ? '#991b1b' : '#374151'}`,
@@ -158,6 +156,6 @@ export function PlayingCard({ card, onClick, disabled }: CardProps) {
           pointerEvents: 'none',
         }}
       />
-    </div>
+    </button>
   );
-}
+});

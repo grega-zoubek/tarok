@@ -1,8 +1,10 @@
-import { type Card, isSuitCard, isTarokCard, cardsEqual, cardKey } from "../cards/card.js";
-import { type PlayerId, type Bid, type BiddingAction, PASS, getBidPriority, placeBid, getCurrentBiddingPlayer, resolveBidding } from "../bidding/bidding.js";
-import { type CalledKing, type Teams, holdsKing, determineTeams } from "../calling/calling.js";
-import { type TrickRound, createTrickRound, playTurn, playTurnKlop, resolveTrick, beginNextTrick, isTrickComplete, getCurrentPlayer } from "../game/trick-round.js";
-import { isLegalDiscard, pickTalonGroup, createTalonExchange, discardCards } from "../talon/talon.js";
+import { type Card, isSuitCard, isTarokCard, cardsEqual } from "../cards/card.js";
+import { type PlayerId, type Bid, type BiddingAction, type BiddingRound, getLegalBids, placeBid, getCurrentBiddingPlayer, resolveBidding } from "../bidding/bidding.js";
+import { SUITS, type Suit } from "../cards/suit.js";
+import { type CalledKing, type Teams, determineTeams } from "../calling/calling.js";
+import { type TrickRound, createTrickRound, playTurn, playTurnKlop, beginNextTrick, isTrickComplete, getCurrentPlayer } from "../game/trick-round.js";
+import { pickTalonGroup, createTalonExchange, discardCards } from "../talon/talon.js";
+import { hasTrula } from "../scoring/scoring.js";
 
 /**
  * Defines the main phases of a complete Tarok game.
@@ -38,6 +40,8 @@ export interface GameState {
 
   // Calling State
   readonly calledKing: CalledKing | undefined;
+  /** True, če je klicani kralj v talonu (deklarant igra sam). */
+  readonly calledKingInTalon: boolean;
   readonly teams: Teams | undefined;
 
   // Talon Exchange State
@@ -50,9 +54,6 @@ export interface GameState {
 
   // Trick Playing State
   readonly trickRound: TrickRound | undefined;
-
-  // Radlci po igralcu (vsak začne z 0; podvojijo vrednost naslednje igre)
-  readonly radlci: Record<PlayerId, number>;
 }
 
 export interface GameStateConfig {
@@ -81,6 +82,7 @@ export function createInitialGameState(config: GameStateConfig): GameState {
     declarer: undefined,
 
     calledKing: undefined,
+    calledKingInTalon: false,
     teams: undefined,
 
     pickedTalonGroupIndex: undefined,
@@ -90,9 +92,94 @@ export function createInitialGameState(config: GameStateConfig): GameState {
     announcementsRound: undefined,
 
     trickRound: undefined,
-
-    radlci: Object.fromEntries(config.playerOrder.map(pid => [pid, 0])) as Record<PlayerId, number>,
   };
+}
+
+/** Število kart, ki jih deklarant zamenja s talonom, glede na pogodbo. */
+export function getExchangeCount(contract: Bid | "klop" | undefined): 3 | 2 | 1 {
+  if (contract === "dve" || contract === "solo_dve") return 2;
+  if (contract === "ena" || contract === "solo_ena") return 1;
+  return 3;
+}
+
+/**
+ * Vrne roko igralca. Med igranjem je vir resnice `trickRound.hands`,
+ * pred tem pa `hands` (pred izmenjavo talona).
+ */
+export function getHand(state: GameState, playerId: PlayerId): readonly Card[] {
+  const roundHand = state.trickRound?.hands.find((h) => h.playerId === playerId);
+  if (roundHand !== undefined) return roundHand.cards;
+  return state.hands[playerId] ?? [];
+}
+
+/** Kdo odpre prvi štih pri pogodbah brez talona. */
+function getOpeningLeader(
+  contract: Bid | "klop",
+  declarer: PlayerId,
+  playerOrder: readonly PlayerId[],
+): PlayerId {
+  // Berač: prvi štih odpre igralec levo od deklaranta (naslednji po vrstnem redu).
+  if (contract === "berac" || contract === "odprti_berac") {
+    const index = playerOrder.indexOf(declarer);
+    return playerOrder[(index + 1) % playerOrder.length]!;
+  }
+  return declarer;
+}
+
+function syncHands(
+  state: GameState,
+  trickRound: TrickRound,
+): Record<PlayerId, readonly Card[]> {
+  const hands: Record<PlayerId, readonly Card[]> = { ...state.hands };
+  for (const hand of trickRound.hands) {
+    hands[hand.playerId] = hand.cards;
+  }
+  return hands;
+}
+
+/** Zgradi `BiddingRound` iz trenutnega stanja (za `isLegalBid`/`getLegalBids`). */
+export function getBiddingRound(state: GameState): BiddingRound {
+  return {
+    playerOrder: state.playerOrder,
+    forehand: state.forehand,
+    currentPlayerIndex:
+      state.currentPlayer !== undefined
+        ? state.playerOrder.indexOf(state.currentPlayer)
+        : -1,
+    bids: state.bids,
+    passedPlayers: state.passedPlayers,
+    currentHighestBid:
+      state.contract && state.contract !== "klop"
+        ? { playerId: state.declarer!, bid: state.contract }
+        : undefined,
+    isFinished: state.phase !== "bidding",
+  };
+}
+
+/** Licitacije, ki jih igralec na potezi trenutno sme izbrati. */
+export function getLegalBidsForState(state: GameState): readonly Bid[] {
+  if (state.phase !== "bidding" || state.currentPlayer === undefined) {
+    return [];
+  }
+  return getLegalBids(getBiddingRound(state), state.currentPlayer);
+}
+
+/**
+ * Barve, katerih kralja deklarant sme klicati: vseh štirih, če ima vse
+ * kralje (tiha sola), sicer samo barve, katerih kralja nima v roki.
+ */
+export function getCallableSuits(state: GameState): readonly Suit[] {
+  if (state.phase !== "calling" || state.declarer === undefined) {
+    return [];
+  }
+  const hand = getHand(state, state.declarer);
+  const kingCount = hand.filter((c) => isSuitCard(c) && c.rank === "king").length;
+  if (kingCount === 4) {
+    return SUITS;
+  }
+  return SUITS.filter(
+    (suit) => !hand.some((c) => isSuitCard(c) && c.rank === "king" && c.suit === suit),
+  );
 }
 
 export function dispatchBid(state: GameState, playerId: PlayerId, action: BiddingAction): GameState {
@@ -100,18 +187,7 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
     throw new Error(`Cannot bid in phase ${state.phase}`);
   }
 
-  // Construct a temporary BiddingRound object to use our existing bidding logic
-  const biddingRound = {
-    playerOrder: state.playerOrder,
-    forehand: state.forehand,
-    currentPlayerIndex: state.playerOrder.indexOf(state.currentPlayer!),
-    bids: state.bids,
-    passedPlayers: state.passedPlayers,
-    currentHighestBid: state.contract && state.contract !== "klop" ? { playerId: state.declarer!, bid: state.contract as Bid } : undefined,
-    isFinished: false,
-  };
-
-  const nextBiddingRound = placeBid(biddingRound, playerId, action);
+  const nextBiddingRound = placeBid(getBiddingRound(state), playerId, action);
   
   if (!nextBiddingRound.isFinished) {
     return {
@@ -125,7 +201,7 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
   }
 
   const result = resolveBidding(nextBiddingRound);
-  let nextPhase: GamePhase = "finished"; // Default if something weird happens
+  let nextPhase: GamePhase;
   let nextTalonGroups: readonly (readonly Card[])[] = [];
 
   // Ekipe za pogodbe, ki preskočijo calling fazo
@@ -161,12 +237,20 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
     // Solo pogodbe (solo_tri, solo_dve, solo_ena) — menjava talona brez calling
     nextPhase = "talon";
     soloTeams = determineTeams(state.hands as Record<PlayerId, import("../cards/card.js").SuitCard[]>, result.declarer!);
-    let exchangeCount: 3 | 2 | 1 = 3;
-    if (result.contract === "solo_dve") exchangeCount = 2;
-    if (result.contract === "solo_ena") exchangeCount = 1;
-    const talonRound = createTalonExchange(result.declarer!, state.talon, exchangeCount);
+    const talonRound = createTalonExchange(
+      result.declarer!,
+      state.talon,
+      getExchangeCount(result.contract),
+    );
     nextTalonGroups = talonRound.talonGroups;
   }
+
+  const openingLeader =
+    nextPhase !== "playing"
+      ? undefined
+      : result.declarer !== undefined
+        ? getOpeningLeader(result.contract, result.declarer, state.playerOrder)
+        : state.forehand;
 
   const finalState: GameState = {
     ...state,
@@ -182,22 +266,18 @@ export function dispatchBid(state: GameState, playerId: PlayerId, action: Biddin
       ? createTrickRound({
           playerOrder: state.playerOrder,
           hands: Object.entries(state.hands).map(([id, cards]) => ({ playerId: Number(id), cards })),
-          leader: (result.contract === "berac" || result.contract === "odprti_berac" || result.contract === "solo_brez")
-            ? result.declarer!
-            : state.forehand,
+          leader: openingLeader!,
         })
       : undefined,
-    // Samo valat igri gresta skozi napovedi; berač/odprti_berač/solo_brez brez napovedi
+    // Napovedi vedno začne aktivni igralec (deklarant).
     announcementsRound: nextPhase === "announcements"
-      ? createAnnouncementsRound(state.playerOrder, result.declarer!, state.forehand)
+      ? createAnnouncementsRound(state.playerOrder, result.declarer!, result.declarer!)
       : undefined,
     currentPlayer:
       nextPhase === "playing"
-        ? (result.contract === "berac" || result.contract === "odprti_berac" || result.contract === "solo_brez")
-          ? result.declarer
-          : state.forehand
+        ? openingLeader
         : nextPhase === "announcements"
-          ? state.forehand
+          ? result.declarer
           : result.declarer,
   };
 
@@ -212,30 +292,73 @@ export function dispatchCall(state: GameState, playerId: PlayerId, suit: "hearts
     throw new Error(`It is not player ${playerId}'s turn to call`);
   }
 
+  if (state.declarer !== playerId) {
+    throw new Error(`Only declarer ${state.declarer} can call a king`);
+  }
+
   let calledKing: CalledKing | undefined = undefined;
 
   if (suit) {
+    const declarerHand = state.hands[playerId] ?? [];
+    const declarerKings = declarerHand.filter(
+      (card) => isSuitCard(card) && card.rank === "king",
+    ).length;
+    const callsOwnKing = declarerHand.some(
+      (card) => isSuitCard(card) && card.rank === "king" && card.suit === suit,
+    );
+
+    // Klicati moraš barvo, katere kralja NIMAŠ v roki. Izjema: če imaš vse
+    // štiri kralje, itak igraš sam (tiha sola).
+    if (callsOwnKing && declarerKings < 4) {
+      throw new Error(
+        `Declarer cannot call a king they already hold (${suit}); call another suit.`,
+      );
+    }
+
     calledKing = { suit, rank: "king" };
   }
-  
+
+  const calledKingInTalon =
+    calledKing !== undefined &&
+    state.talon.some(
+      (card) => isSuitCard(card) && card.rank === "king" && card.suit === calledKing!.suit,
+    );
+
   // Teams are determined based on the call
   const teams = determineTeams(state.hands as Record<PlayerId, import("../cards/card.js").SuitCard[]>, state.declarer!, calledKing);
 
-  // Initialize talon groups for the next phase
-  let exchangeCount: 3 | 2 | 1 = 3;
-  if (state.contract === "dve") exchangeCount = 2;
-  if (state.contract === "ena") exchangeCount = 1;
-
-  const talonRound = createTalonExchange(state.declarer!, state.talon, exchangeCount);
+  const talonRound = createTalonExchange(
+    state.declarer!,
+    state.talon,
+    getExchangeCount(state.contract),
+  );
 
   return {
     ...state,
     phase: "talon",
     currentPlayer: state.declarer, // Ensure declarer stays as current player for talon pick
     calledKing,
+    calledKingInTalon,
     teams,
     talonGroups: talonRound.talonGroups,
   };
+}
+
+/**
+ * Če je klicani kralj v talonu, mora deklarant obvezno vzeti skupino, ki ga
+ * vsebuje. Vrne indeks te skupine ali undefined, kadar izbira ni omejena.
+ */
+export function getRequiredTalonGroup(state: GameState): number | undefined {
+  if (!state.calledKingInTalon || state.calledKing === undefined) return undefined;
+  const index = state.talonGroups.findIndex((group) =>
+    group.some(
+      (card) =>
+        isSuitCard(card) &&
+        card.rank === "king" &&
+        card.suit === state.calledKing!.suit,
+    ),
+  );
+  return index >= 0 ? index : undefined;
 }
 
 export function dispatchTalonPick(state: GameState, playerId: PlayerId, groupIndex: number): GameState {
@@ -247,12 +370,18 @@ export function dispatchTalonPick(state: GameState, playerId: PlayerId, groupInd
     throw new Error(`Only declarer ${state.declarer} can pick talon, not player ${playerId}`);
   }
 
-  // Talon counts 
-  let exchangeCount: 3 | 2 | 1 = 3;
-  if (state.contract === "dve" || state.contract === "solo_dve") exchangeCount = 2;
-  if (state.contract === "ena" || state.contract === "solo_ena") exchangeCount = 1;
+  const requiredGroup = getRequiredTalonGroup(state);
+  if (requiredGroup !== undefined && groupIndex !== requiredGroup) {
+    throw new Error(
+      "Klicani kralj je v talonu: vzeti moraš kupček, ki vsebuje klicanega kralja.",
+    );
+  }
 
-  const talonRound = createTalonExchange(playerId, state.talon, exchangeCount);
+  const talonRound = createTalonExchange(
+    playerId,
+    state.talon,
+    getExchangeCount(state.contract),
+  );
   const pickedRound = pickTalonGroup(talonRound, playerId, groupIndex);
 
   // Add the picked cards to the hand immediately
@@ -281,9 +410,7 @@ export function dispatchDiscard(state: GameState, playerId: PlayerId, discardedC
     throw new Error("Cannot discard without picking a talon group first");
   }
 
-  let exchangeCount: 3 | 2 | 1 = 3;
-  if (state.contract === "dve" || state.contract === "solo_dve") exchangeCount = 2;
-  if (state.contract === "ena" || state.contract === "solo_ena") exchangeCount = 1;
+  const exchangeCount = getExchangeCount(state.contract);
 
   const talonRound = {
     declarer: playerId,
@@ -310,49 +437,102 @@ export function dispatchDiscard(state: GameState, playerId: PlayerId, discardedC
       ...state.hands,
       [playerId]: newHand,
     },
-    announcementsRound: createAnnouncementsRound(state.playerOrder, state.declarer!, state.forehand),
-    currentPlayer: state.forehand, // standard announcements start with forehand
+    // Napovedi vedno začne aktivni igralec (deklarant).
+    announcementsRound: createAnnouncementsRound(state.playerOrder, state.declarer!, state.declarer!),
+    currentPlayer: state.declarer,
   };
 }
 
-export function dispatchAnnouncement(state: GameState, playerId: PlayerId, announcementType: AnnouncementType): GameState {
+/**
+ * Vrne razlog, zakaj igralec ne sme napovedati, ali undefined, če sme.
+ * Uporablja ga tudi UI za prikaz dovoljenih gumbov.
+ */
+export function getAnnouncementError(
+  state: GameState,
+  playerId: PlayerId,
+  announcementType: AnnouncementType,
+): string | undefined {
   if (state.phase !== "announcements" || !state.announcementsRound) {
-    throw new Error(`Cannot announce in phase ${state.phase}`);
+    return `Cannot announce in phase ${state.phase}`;
   }
 
-  // ── Eligibility check per official rules (stevec-taroka.si / tarok.net) ──
-  // Pagat ultimo: samo igralec, ki ima pagata (tarok I)
-  if (announcementType === "pagat_ultimo") {
-    const pagatHolder = state.playerOrder.find(pid =>
-      (state.hands[pid] ?? []).some(c => isTarokCard(c) && c.rank === 1)
-    );
-    if (pagatHolder !== playerId) {
-      throw new Error(`Samo igralec, ki ima pagata, lahko napove pagat ultimo.`);
-    }
+  const round = state.announcementsRound;
+  if (round.isFinished) {
+    return "Announcements round is already finished";
   }
 
-  // Kralj ultimo: samo igralec, ki ima klicanega kralja (partner) oz. deklarant pri soloi gri
-  if (announcementType === "kralj_ultimo") {
-    if (state.calledKing) {
-      const kingHolder = state.playerOrder.find(pid =>
-        (state.hands[pid] ?? []).some(c => isSuitCard(c) && c.rank === "king" && c.suit === state.calledKing!.suit)
+  if (getCurrentAnnouncingPlayer(round) !== playerId) {
+    return `It is not player ${playerId}'s turn to announce`;
+  }
+
+  if ((round.announcements[playerId] ?? []).some(a => a.type === announcementType)) {
+    return `Player ${playerId} has already announced ${announcementType}`;
+  }
+
+  const hand = getHand(state, playerId);
+  const declarerTeam =
+    state.teams?.declarerTeam ??
+    (state.declarer !== undefined ? [state.declarer] : []);
+
+  switch (announcementType) {
+    case "pagat_ultimo":
+      if (!hand.some(c => isTarokCard(c) && c.rank === 1)) {
+        return "Samo igralec, ki ima pagata, lahko napove pagat ultimo.";
+      }
+      return undefined;
+
+    case "trula":
+      // Napoved trulo sme dati le igralec, ki ima vse tri trula v roki.
+      if (!hasTrula(hand)) {
+        return "Trulo lahko napove samo igralec, ki ima pagata, monda in škisa.";
+      }
+      return undefined;
+
+    case "kralji":
+      return undefined;
+
+    case "kralj_ultimo": {
+      if (!state.calledKing) {
+        return state.declarer === playerId
+          ? undefined
+          : "Solo igra: samo deklarant lahko napove kralj ultimo.";
+      }
+      if (state.calledKingInTalon) {
+        return state.declarer === playerId
+          ? undefined
+          : "Klicani kralj je v talonu; kralj ultimo lahko napove samo deklarant.";
+      }
+      const holdsCalledKing = hand.some(
+        c => isSuitCard(c) && c.rank === "king" && c.suit === state.calledKing!.suit,
       );
-      if (kingHolder !== playerId) {
-        throw new Error(`Samo igralec, ki ima klicanega kralja, lahko napove kralj ultimo.`);
-      }
-    } else {
-      // Solo pogodba brez klicanega kralja — samo deklarant
-      if (state.declarer !== playerId) {
-        throw new Error(`Solo igra: samo deklarant lahko napove kralj ultimo.`);
-      }
+      return holdsCalledKing
+        ? undefined
+        : "Samo igralec, ki ima klicanega kralja, lahko napove kralj ultimo.";
     }
+
+    case "valat":
+      return declarerTeam.includes(playerId)
+        ? undefined
+        : "Valat lahko napove samo aktivna ekipa.";
+  }
+}
+
+export function dispatchAnnouncement(state: GameState, playerId: PlayerId, announcementType: AnnouncementType): GameState {
+  const error = getAnnouncementError(state, playerId, announcementType);
+  if (error !== undefined) {
+    throw new Error(error);
   }
 
-  const nextRound = placeAnnouncement(state.announcementsRound, playerId, announcementType);
+  const nextRound = placeAnnouncement(
+    state.announcementsRound!,
+    playerId,
+    announcementType,
+  );
 
   return {
     ...state,
     announcementsRound: nextRound,
+    currentPlayer: getCurrentAnnouncingPlayer(nextRound),
     // Turn stays with the current player until they pass
   };
 }
@@ -418,6 +598,7 @@ export function dispatchPlay(state: GameState, playerId: PlayerId, card: Card): 
           ...state,
           phase: "finished",
           currentPlayer: undefined,
+          hands: syncHands(state, nextTrickRound),
           trickRound: nextTrickRound,
         };
       }
@@ -431,6 +612,7 @@ export function dispatchPlay(state: GameState, playerId: PlayerId, card: Card): 
           ...state,
           phase: "finished",
           currentPlayer: undefined,
+          hands: syncHands(state, nextTrickRound),
           trickRound: nextTrickRound,
         };
       }
@@ -445,6 +627,7 @@ export function dispatchPlay(state: GameState, playerId: PlayerId, card: Card): 
     ...state,
     phase: isFinished ? "finished" : "playing",
     currentPlayer: isFinished ? undefined : getCurrentPlayer(nextTrickRound),
+    hands: syncHands(state, nextTrickRound),
     trickRound: nextTrickRound,
   };
 }

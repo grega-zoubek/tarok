@@ -49,7 +49,7 @@ describe("Tarok Game Simulation (4 Bots)", () => {
       
       try {
         switch (state.phase) {
-          case "bidding":
+          case "bidding": {
             // IMPROVED BIDDING LOGIC FOR SIMULATION
             // A real bot might return 'tri' but someone else already bid 'dve'.
             // The simulation loop needs to handle this by checking legality.
@@ -71,14 +71,16 @@ describe("Tarok Game Simulation (4 Bots)", () => {
             state = dispatchBid(state, currentPlayerId, bid);
             console.log(`P${currentPlayerId} bids: ${bid}. New Phase: ${state.phase}`);
             break;
+          }
           
-          case "calling":
+          case "calling": {
             const suit = bot.chooseCalledKing(state);
             state = dispatchCall(state, currentPlayerId, suit);
             console.log(`P${currentPlayerId} calls king: ${suit}`);
             break;
+          }
           
-          case "talon":
+          case "talon": {
             if (state.pickedTalonGroupIndex === undefined) {
               const groupIndex = bot.chooseTalonGroup(state);
               state = dispatchTalonPick(state, currentPlayerId, groupIndex);
@@ -94,13 +96,14 @@ describe("Tarok Game Simulation (4 Bots)", () => {
               console.log(`P${currentPlayerId} discards ${discards.length} cards`);
             }
             break;
+          }
           
           case "announcements":
             state = dispatchAnnouncementPass(state, currentPlayerId);
             console.log(`P${currentPlayerId} passes announcements`);
             break;
           
-          case "playing":
+          case "playing": {
             const trickHand = state.trickRound?.hands.find(h => h.playerId === currentPlayerId)?.cards || [];
             const card = bot.choosePlay(state, trickHand);
             state = dispatchPlay(state, currentPlayerId, card);
@@ -108,6 +111,7 @@ describe("Tarok Game Simulation (4 Bots)", () => {
                 console.log(`--- Trick completed. Last winner: ${state.trickRound.capturedTricks[state.trickRound.capturedTricks.length-1]?.winner}`);
             }
             break;
+          }
         }
       } catch (e) {
           console.error(`Simulation Error at Iteration ${iterations}:`, e);

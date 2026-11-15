@@ -145,10 +145,19 @@ export function getLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
  * Enako za taroke — moraš iti čez vodilni tarok, če ga imaš.
  */
 export function getKlopLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
+  // Klop: pagat sme pasti šele, ko v roki ni več drugega taroka.
+  const protectPagat = (legal: Card[]): Card[] => {
+    const taroksInHand = hand.filter(isTarokCard);
+    if (taroksInHand.length > 1 && taroksInHand.some(c => c.rank === 1)) {
+      return legal.filter(c => !(isTarokCard(c) && c.rank === 1));
+    }
+    return legal;
+  };
+
   const [lead] = trick.plays;
   if (lead === undefined) {
-    // Vodja štiha — vsaka karta je legalna
-    return [...hand];
+    // Vodja štiha — vsaka karta je legalna (razen pagata, dokler so še taroki)
+    return protectPagat([...hand]);
   }
 
   // Vodilna karta je tarok
@@ -163,7 +172,7 @@ export function getKlopLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
         compareTaroks(p.card, best.card) > 0 ? p : best
       );
     const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
-    return higher.length > 0 ? higher : taroks;
+    return protectPagat(higher.length > 0 ? higher : taroks);
   }
 
   // Vodilna karta je barvna
@@ -185,18 +194,18 @@ export function getKlopLegalPlays(hand: readonly Card[], trick: Trick): Card[] {
     return higher.length > 0 ? higher : matchingSuit;
   }
 
-  // Ni barve — igraj tarok (prav tako moraš iti čez če mreš)
+  // Ni barve — igraj tarok (prav tako moraš iti čez če moreš)
   const taroks = hand.filter(isTarokCard);
   if (taroks.length === 0) return [...hand];
 
   const tarokPlaysOnTable = trick.plays.filter((p): p is TarokPlay => isTarokCard(p.card));
-  if (tarokPlaysOnTable.length === 0) return taroks;
+  if (tarokPlaysOnTable.length === 0) return protectPagat(taroks);
 
   const highestTarokOnTable = tarokPlaysOnTable.reduce((best, p) =>
     compareTaroks(p.card, best.card) > 0 ? p : best
   );
   const higher = taroks.filter(c => compareTaroks(c, highestTarokOnTable.card) > 0);
-  return higher.length > 0 ? higher : taroks;
+  return protectPagat(higher.length > 0 ? higher : taroks);
 }
 
 export function isLegalPlay(

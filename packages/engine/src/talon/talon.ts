@@ -106,6 +106,31 @@ export function isLegalDiscard(discardedCards: readonly Card[], hand: readonly C
   return true;
 }
 
+/**
+ * Vrne nabor kart, iz katerih lahko deklarant izbere `count` kart za založitev.
+ * Upošteva pravili: 5-točkovnih kart ni dovoljeno založiti, taroke pa le,
+ * če ni dovolj barvnih kart.
+ */
+export function getDiscardPool(hand: readonly Card[], count: number): Card[] {
+  const discardable = hand.filter((card) => {
+    if (isTarokCard(card)) {
+      return !(
+        card.rank === "skis" ||
+        card.rank === 1 ||
+        (card.rank === 21 && card.name === "mond")
+      );
+    }
+    if (isSuitCard(card)) return card.rank !== "king";
+    return false;
+  });
+
+  const suitCards = discardable.filter(isSuitCard);
+  const taroks = discardable.filter(isTarokCard);
+
+  // Dokler je dovolj barvnih kart, tarokov ni dovoljeno založiti.
+  return suitCards.length >= count ? suitCards : [...suitCards, ...taroks];
+}
+
 export function discardCards(
   round: TalonExchangeRound,
   playerId: PlayerId,

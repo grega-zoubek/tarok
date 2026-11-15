@@ -1,4 +1,4 @@
-import { type PlayerId, type Bid } from "../bidding/bidding.js";
+import { type PlayerId } from "../bidding/bidding.js";
 
 /**
  * Standard announcements (napovedi) in Tarok.
@@ -41,20 +41,23 @@ export interface AnnouncementsRound {
 export function createAnnouncementsRound(
   playerOrder: readonly PlayerId[],
   declarer: PlayerId,
-  startingPlayer: PlayerId // Usually forehand or declarer depending on exact variation, but typically forehand starts
+  /** Pravilo: napovedi vedno začne aktivni igralec (deklarant). */
+  startingPlayer: PlayerId = declarer,
 ): AnnouncementsRound {
   const startingIndex = playerOrder.indexOf(startingPlayer);
   if (startingIndex === -1) {
     throw new Error("Starting player must be in the player order");
   }
 
+  const announcements = Object.fromEntries(
+    playerOrder.map((playerId) => [playerId, [] as readonly PlayerAnnouncement[]]),
+  ) as Record<PlayerId, readonly PlayerAnnouncement[]>;
+
   return {
     playerOrder: [...playerOrder],
     declarer,
     currentPlayerIndex: startingIndex,
-    announcements: {
-      0: [], 1: [], 2: [], 3: []
-    },
+    announcements,
     consecutivePasses: 0,
     isFinished: false,
   };
@@ -100,17 +103,6 @@ export function placeAnnouncement(
   };
 }
 
-export function placeContra(
-  round: AnnouncementsRound,
-  playerId: PlayerId,
-  targetPlayer: PlayerId,
-  announcementType: AnnouncementType | "game" // "game" is for calling Kontra on the contract itself
-): AnnouncementsRound {
-  // Logic for applying a multiplier (Kontra) to an existing announcement or the game itself.
-  // Will require tracking game/contract multipliers as well.
-  throw new Error("Not implemented yet");
-}
-
 export function passAnnouncements(
   round: AnnouncementsRound,
   playerId: PlayerId
@@ -124,9 +116,10 @@ export function passAnnouncements(
   }
 
   const nextConsecutivePasses = round.consecutivePasses + 1;
-  const isFinished = nextConsecutivePasses === 4;
+  const isFinished = nextConsecutivePasses === round.playerOrder.length;
 
-  let nextPlayerIndex = (round.currentPlayerIndex + 1) % 4;
+  const nextPlayerIndex =
+    (round.currentPlayerIndex + 1) % round.playerOrder.length;
 
   return {
     ...round,

@@ -5,3 +5,11 @@ coverage/
 .DS_Store
 .env
 .env.*
+
+# Test/build artefacts, ki ne sodijo v git
+packages/ai/tests/*.d.ts
+packages/ai/tests/*.d.ts.map
+packages/ai/tests/*.js
+packages/ai/tests/*.js.map
+*.log
+.eslintcache

@@ -1,30 +1,37 @@
-import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType } from "@tarok/engine";
+import type { GameState, Card, PlayerId, BiddingAction, AnnouncementType, Rng } from "@tarok/engine";
 import { 
-  getLegalPlays, getKlopLegalPlays, PASS, getTrickWinner, isTarokCard, isSuitCard, countPoints, tarokStrength, suitStrength
+  countPoints, getAnnouncementError, getCallableSuits, getDiscardPool, getHand, getKlopLegalPlays,
+  getLegalBidsForState, getLegalPlays, getRequiredTalonGroup, getTrickWinner,
+  hasAllKings, hasTrula, isSuitCard, isTarokCard, nextInt, PASS, shuffle, suitStrength, tarokStrength,
 } from "@tarok/engine";
 import type { TarokBot } from "./random-bot.js";
 
 export type BotDifficulty = 1 | 2 | 3 | 4 | 5;
 
+/** RNG, ki se uporablja, kadar bot ne dobi svojega (deterministični testi). */
+const defaultRng: Rng = { next: () => Math.random() };
+
 export class HeuristicBot implements TarokBot {
   constructor(
     public readonly playerId: PlayerId,
-    public readonly difficulty: BotDifficulty
+    public readonly difficulty: BotDifficulty,
+    private readonly rng: Rng = defaultRng
   ) {}
 
   chooseBid(state: GameState): BiddingAction {
     if (this.difficulty === 1) return PASS;
 
-    const myHand = state.hands[this.playerId] || [];
+    const myHand = getHand(state, this.playerId);
     const taroksCount = myHand.filter(isTarokCard).length;
     
     // Very simple bidding heuristic:
     // Level 2+ bids "tri" if they have 6 or more taroks.
     // Level 4+ bids "dve" or "ena" if they have 8 or more.
-    if (taroksCount >= 8 && this.difficulty >= 4) {
-      return "dve"; // Simplification: we don't handle outbidding dynamically in this snippet perfectly, we just bid "dve" if possible
+    const legal = getLegalBidsForState(state);
+    if (taroksCount >= 8 && this.difficulty >= 4 && legal.includes("dve")) {
+      return "dve";
     }
-    if (taroksCount >= 6 && this.difficulty >= 2) {
+    if (taroksCount >= 6 && this.difficulty >= 2 && legal.includes("tri")) {
       return "tri";
     }
 
@@ -32,29 +39,41 @@ export class HeuristicBot implements TarokBot {
   }
 
   chooseCalledKing(state: GameState): "hearts" | "spades" | "clubs" | "diamonds" | undefined {
-    const suits = ["hearts", "spades", "clubs", "diamonds"] as const;
+    const myHand = getHand(state, this.playerId);
+    const kings = ["hearts", "diamonds", "clubs", "spades"].filter((suit) =>
+      myHand.some(c => isSuitCard(c) && c.suit === suit && c.rank === "king"),
+    );
+    // Vsi štirje kralji: igra sam (tiha sola), zato ne kliče kralja.
+    if (kings.length === 4) return undefined;
+
+    const callable = getCallableSuits(state);
+    if (callable.length === 0) return undefined;
     if (this.difficulty <= 2) {
-      return suits[Math.floor(Math.random() * suits.length)];
+      return callable[nextInt(this.rng, callable.length)];
     }
 
-    // Level 3+: Call a king in a suit where we have many cards, or call missing king.
-    // Simplification: just pick a suit where we DON'T have the king, but we have pip cards.
-    const myHand = state.hands[this.playerId] || [];
-    for (const suit of suits) {
-      const hasKing = myHand.some(c => isSuitCard(c) && c.suit === suit && c.rank === "king");
-      if (!hasKing) {
-        return suit;
+    // Level 3+: kliči barvo, v kateri ima največ kart (partner bo nosil kralja).
+    let bestSuit = callable[0]!;
+    let bestCount = -1;
+    for (const suit of callable) {
+      const count = myHand.filter(c => isSuitCard(c) && c.suit === suit).length;
+      if (count > bestCount) {
+        bestCount = count;
+        bestSuit = suit;
       }
     }
-
-    return "hearts";
+    return bestSuit;
   }
 
   chooseTalonGroup(state: GameState): number {
     if (!state.talon || state.talonGroups?.length === 0) return 0;
-    
+
+    // Klicani kralj v talonu: izbira skupine ni prosta.
+    const requiredGroup = getRequiredTalonGroup(state);
+    if (requiredGroup !== undefined) return requiredGroup;
+
     if (this.difficulty <= 2) {
-      return Math.floor(Math.random() * state.talonGroups!.length);
+      return nextInt(this.rng, state.talonGroups!.length);
     }
 
     // Level 3+: Pick the group with the highest point value
@@ -72,22 +91,17 @@ export class HeuristicBot implements TarokBot {
     return bestIndex;
   }
 
-  chooseDiscards(state: GameState, hand: readonly Card[], count: number): readonly Card[] {
-    const discardable = hand.filter(c => {
-      if (isTarokCard(c)) {
-        return c.rank !== "skis" && c.rank !== 1 && !(c.rank === 21 && c.name === "mond");
-      }
-      if (isSuitCard(c) && c.rank === "king") return false;
-      return true;
-    });
+  chooseDiscards(_state: GameState, hand: readonly Card[], count: number): readonly Card[] {
+    // Engine omeji nabor: 5-točkovnih kart ni mogoče založiti, taroke pa le,
+    // kadar ni dovolj barvnih kart.
+    const discardable = getDiscardPool(hand, count);
 
     const suitCards = discardable.filter(isSuitCard);
     const taroks = discardable.filter(isTarokCard);
 
     if (this.difficulty === 1) {
-      // Random legal discard
-      const combined = [...suitCards, ...taroks].sort(() => Math.random() - 0.5);
-      return combined.slice(0, count);
+      // Random legal discard (deterministično ob injektiranem RNG)
+      return shuffle([...suitCards, ...taroks], this.rng).slice(0, count);
     }
 
     // Level 2+: Try to discard suit cards first, starting from highest points (Queens -> Cavaliers -> Jacks -> Pips)
@@ -113,8 +127,34 @@ export class HeuristicBot implements TarokBot {
   }
 
   chooseAnnouncements(state: GameState): readonly AnnouncementType[] {
-    // Advanced bots could announce trula if they hold it, but we'll skip for now.
-    return [];
+    if (state.phase !== "announcements" || this.difficulty < 4) return [];
+
+    const hand = getHand(state, this.playerId);
+    const candidates: AnnouncementType[] = [];
+    if (hasTrula(hand)) candidates.push("trula");
+    if (hasAllKings(hand)) candidates.push("kralji");
+
+    if (this.difficulty >= 5) {
+      if (hand.some(c => isTarokCard(c) && c.rank === 1)) {
+        candidates.push("pagat_ultimo");
+      }
+      if (
+        state.calledKing !== undefined &&
+        hand.some(
+          c =>
+            isSuitCard(c) &&
+            c.suit === state.calledKing!.suit &&
+            c.rank === "king",
+        )
+      ) {
+        candidates.push("kralj_ultimo");
+      }
+    }
+
+    // Napovej le tisto, kar je v tem trenutku res dovoljeno.
+    return candidates.filter(
+      (type) => getAnnouncementError(state, this.playerId, type) === undefined,
+    );
   }
 
   choosePlay(state: GameState, hand: readonly Card[]): Card {
@@ -127,9 +167,9 @@ export class HeuristicBot implements TarokBot {
     const legalPlays = (isKlop || isNegat) ? getKlopLegalPlays(hand, trick) : getLegalPlays(hand, trick);
     if (legalPlays.length === 1) return legalPlays[0]!;
 
-    // LEVEL 1: Random
+    // LEVEL 1: Random (deterministično ob injektiranem RNG)
     if (this.difficulty === 1) {
-      return legalPlays[Math.floor(Math.random() * legalPlays.length)]!;
+      return legalPlays[nextInt(this.rng, legalPlays.length)]!;
     }
 
     // Sort legal plays by power
@@ -145,7 +185,10 @@ export class HeuristicBot implements TarokBot {
         const aT = isTarokCard(a), bT = isTarokCard(b);
         if (aT !== bT) return aT ? 1 : -1; // barvne najprej
         if (aT && bT) return tarokStrength(a) - tarokStrength(b); // nižji tarok
-        return suitStrength(a as any) - suitStrength(b as any);   // nižja barvna
+        if (isSuitCard(a) && isSuitCard(b)) {
+          return suitStrength(a) - suitStrength(b); // nižja barvna
+        }
+        return 0;
       });
       return klopSorted[0]!;
     }
@@ -173,7 +216,7 @@ export class HeuristicBot implements TarokBot {
     }
 
     // Helper to evaluate if a card can beat the current winning card
-    const canBeat = (candidate: Card, currentWinner: Card) => {
+    const canBeat = (candidate: Card) => {
       // Create a mock trick to see who wins
       const mockTrick = { leader: trick.leader, plays: [...trick.plays, { playerId: this.playerId, card: candidate }] };
       const newWinner = getTrickWinner(mockTrick);
@@ -181,7 +224,6 @@ export class HeuristicBot implements TarokBot {
     };
 
     // LEVEL 5: Partner awareness and Tarok counting
-    let partnerId: PlayerId | undefined = undefined;
     let isPartnerWinning = false;
 
     if (this.difficulty === 5 && state.teams) {
@@ -206,7 +248,7 @@ export class HeuristicBot implements TarokBot {
     // If partner is winning (Level 5), and we are last or feel safe, play a high point card to give them points! (Schmear)
     if (this.difficulty === 5 && isPartnerWinning) {
       // Play highest point card that DOESN'T overtake the partner
-      const safePlays = legalPlays.filter(c => !canBeat(c, winningCard!));
+      const safePlays = legalPlays.filter(c => !canBeat(c));
       if (safePlays.length > 0) {
         // Sort by points descending
         return safePlays.sort((a, b) => countPoints([b]) - countPoints([a]))[0]!;
@@ -229,7 +271,7 @@ export class HeuristicBot implements TarokBot {
           }
         }
 
-        if (!winningCard || canBeat(candidate, winningCard)) {
+        if (!winningCard || canBeat(candidate)) {
           return candidate;
         }
       }

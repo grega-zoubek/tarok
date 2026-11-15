@@ -4,9 +4,21 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "dev": "pnpm build:packages && pnpm --filter @tarok/web dev",
+    "build": "pnpm build:packages && pnpm --filter @tarok/web build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build:packages": "pnpm --filter @tarok/engine build && pnpm --filter @tarok/ai build"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.10.1",
+    "typescript-eslint": "^8.72.2",
     "vitest": "^4.1.10"
   }
 }

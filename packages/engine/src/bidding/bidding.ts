@@ -108,6 +108,14 @@ export function isLegalBid(round: BiddingRound, playerId: PlayerId, bid: Bid): b
   return newBidPriority > currentPriority;
 }
 
+/** Vse licitacije, ki jih igralec trenutno sme izbrati (brez "naprej"). */
+export function getLegalBids(round: BiddingRound, playerId: PlayerId): readonly Bid[] {
+  if (round.isFinished || getCurrentBiddingPlayer(round) !== playerId) {
+    return [];
+  }
+  return BIDS.filter((bid) => isLegalBid(round, playerId, bid));
+}
+
 export function placeBid(round: BiddingRound, playerId: PlayerId, action: BiddingAction): BiddingRound {
   if (round.isFinished) {
     throw new Error("Bidding round is already finished");
@@ -122,7 +130,7 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
   }
 
   const nextBids = [...round.bids, { playerId, action }];
-  let nextPassedPlayers = [...round.passedPlayers];
+  const nextPassedPlayers = [...round.passedPlayers];
   let nextHighestBid = round.currentHighestBid;
 
   if (action === PASS) {
@@ -143,7 +151,8 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
   const isFinished = allPassed || threePassedWithBid;
 
   // Find the next player who hasn't passed
-  let nextPlayerIndex = (round.currentPlayerIndex + 1) % 4;
+  const playerCount = round.playerOrder.length;
+  let nextPlayerIndex = (round.currentPlayerIndex + 1) % playerCount;
   if (!isFinished) {
     let candidate = round.playerOrder[nextPlayerIndex];
     if (candidate === undefined) {
@@ -151,7 +160,7 @@ export function placeBid(round: BiddingRound, playerId: PlayerId, action: Biddin
     }
     
     while (nextPassedPlayers.includes(candidate)) {
-      nextPlayerIndex = (nextPlayerIndex + 1) % 4;
+      nextPlayerIndex = (nextPlayerIndex + 1) % playerCount;
       candidate = round.playerOrder[nextPlayerIndex];
       if (candidate === undefined) {
         throw new Error("Invalid player index");
