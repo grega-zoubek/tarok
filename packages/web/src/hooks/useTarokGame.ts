@@ -23,16 +23,20 @@ import {
   tarokStrength,
   isSuitCard,
   suitStrength,
-  calculateGameScore,
-  applyRadlci,
-  isLegalBid,
+  settleGame,
+  getLegalBidsForState,
+  getExchangeCount,
   PASS,
-  type Bid,
   type GameScoreResult,
   type AnnouncementType,
   type ContraTarget,
 } from "@tarok/engine";
 import { HeuristicBot, type BotDifficulty } from "@tarok/ai";
+import {
+  parseSession,
+  serializeSession,
+  SESSION_STORAGE_KEY,
+} from "../lib/session";
 
 export interface BotConfig {
   name: string;
@@ -74,6 +78,7 @@ export function useTarokGame() {
   const [isMovingCards, setIsMovingCards] = useState(false);
   const [showKlopTalon, setShowKlopTalon] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
+  const [currentSeed, setCurrentSeed] = useState<number | null>(null);
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null);
   const [history, setHistory] = useState<RoundResult[]>([]);
   const [roundScore, setRoundScore] = useState<GameScoreResult | null>(null);
@@ -110,56 +115,10 @@ export function useTarokGame() {
     });
   }, []);
 
-  // ── Session-storage persistence ─────────────────────────────────────────
-  // On mount, check for a saved session and resume it.
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem("tarokSession");
-      if (saved) {
-        const { settings, round, hist, scores, radlci: savedRadlci } = JSON.parse(saved) as {
-          settings: GameSettings;
-          round: number;
-          hist: RoundResult[];
-          scores: number[];
-          radlci: number[];
-        };
-        setGameSettings(settings);
-        setCurrentRound(round);
-        setHistory(hist);
-        if (scores) setPlayerScores(scores);
-        if (savedRadlci) setPlayerRadlci(savedRadlci);
-        
-        // Ob refreshu ne dealamo novih kart ampak samo nastavimo settings
-        // restart igre od začetka trenutnega kroga je najboljši približek
-        startNewRound(settings, round);
-      }
-    } catch {
-      sessionStorage.removeItem("tarokSession");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps4
-  }, []);
-
-  // Persist session whenever settings / round / history / scores change.
-  useEffect(() => {
-    if (!gameSettings) return;
-    try {
-      sessionStorage.setItem(
-        "tarokSession",
-        JSON.stringify({
-          settings: gameSettings,
-          round: currentRound,
-          hist: history,
-          scores: playerScores,
-          radlci: playerRadlci,
-        })
-      );
-    } catch { /* storage full or blocked */ }
-  }, [gameSettings, currentRound, history, playerScores, playerRadlci]);
-  // ────────────────────────────────────────────────────────────────────────
 
   // Initialize game
   const startGame = (settings: GameSettings) => {
-    sessionStorage.removeItem("tarokSession");
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
     pendingCompulsoryKlopRef.current = false;
     setGameSettings(settings);
     setCurrentRound(1);
@@ -191,9 +150,11 @@ export function useTarokGame() {
     // »Brez taroka ni taroka« — eno ponovno deljenje sproži obvezni klop
     let dealResult;
     let attempts = 0;
+    let usedSeed: number;
     do {
       let deck = createTarokDeck();
       const randomSeed = Math.floor(Math.random() * 1000000) + attempts;
+      usedSeed = randomSeed;
       deck = shuffle(deck, createSeededRng(randomSeed));
       dealResult = deal(deck, { playerCount: 4 });
       if (anyHandMissingTarok(dealResult.hands)) {
@@ -201,6 +162,7 @@ export function useTarokGame() {
       }
       attempts += 1;
     } while (anyHandMissingTarok(dealResult.hands) && attempts < 50);
+    setCurrentSeed(usedSeed);
 
     const initialHands: Record<PlayerId, Card[]> = {
       0: sortCards(dealResult.hands[0]!),
@@ -232,6 +194,73 @@ export function useTarokGame() {
     setGameState(newState);
   };
 
+  // ── Session-storage persistence ─────────────────────────────────────────
+  // On mount, check for a saved session and resume it.
+  useEffect(() => {
+    const saved = parseSession(sessionStorage.getItem(SESSION_STORAGE_KEY));
+    if (!saved) {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+
+    setGameSettings(saved.settings);
+    setCurrentRound(saved.round);
+    if (saved.seed !== null) setCurrentSeed(saved.seed);
+    setHistory(saved.history);
+    setPlayerScores(saved.scores);
+    setPlayerRadlci(saved.radlci);
+    setRoundScore(saved.roundScore);
+
+    setBots(
+      saved.settings.botConfigs.map(
+        (config, index) => new HeuristicBot((index + 1) as PlayerId, config.difficulty),
+      ),
+    );
+    setPlayerNames([
+      saved.settings.humanName,
+      ...saved.settings.botConfigs.map((b) => b.name),
+    ]);
+
+    // Nadaljujemo točno tam, kjer smo ostali (brez ponovnega deljenja in
+    // brez ponovnega obračuna že končanega kroga). Stara shramba brez
+    // stanja začne krog znova z istimi nastavitvami.
+    if (saved.state) {
+      // Obvezni klop se določi ob obračunu; po obnovitvi že obračunanega
+      // kroga ga izpeljemo iz zadnjega zapisa v zgodovini.
+      const lastResult = saved.history[saved.history.length - 1];
+      if (saved.roundScore && lastResult) {
+        pendingCompulsoryKlopRef.current = saved.scores.some(
+          (score, i) => score === 0 && (lastResult.perPlayerDelta[i] ?? 0) !== 0,
+        );
+      }
+      setGameState(saved.state);
+    } else {
+      startNewRound(saved.settings, saved.round);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist session whenever settings / round / history / scores change.
+  useEffect(() => {
+    if (!gameSettings) return;
+    try {
+      sessionStorage.setItem(
+        SESSION_STORAGE_KEY,
+        serializeSession({
+          settings: gameSettings,
+          round: currentRound,
+          history,
+          scores: playerScores,
+          radlci: playerRadlci,
+          seed: currentSeed,
+          state: gameState,
+          roundScore,
+        })
+      );
+    } catch { /* storage full or blocked */ }
+  }, [gameSettings, currentRound, history, playerScores, playerRadlci, currentSeed, gameState, roundScore]);
+  // ────────────────────────────────────────────────────────────────────────
+
   // Basic game loop hook for bot actions
   useEffect(() => {
     if (!gameState || gameState.phase === "finished" || isProcessingTrick) {
@@ -259,41 +288,26 @@ export function useTarokGame() {
             case "bidding": {
               let bid = currentBot.chooseBid(gameState);
               // Preverimo legalnost pred dispatchom — bot morda vrne poteze ki ni več veljavna
-              if (bid !== PASS) {
-                const mockRound = {
-                  playerOrder: gameState.playerOrder,
-                  forehand: gameState.forehand,
-                  currentPlayerIndex: gameState.playerOrder.indexOf(currentBot.playerId),
-                  bids: gameState.bids,
-                  passedPlayers: gameState.passedPlayers,
-                  currentHighestBid: gameState.contract && gameState.contract !== "klop"
-                    ? { playerId: gameState.declarer!, bid: gameState.contract as Bid }
-                    : undefined,
-                  isFinished: false,
-                  compulsoryKlop: gameState.compulsoryKlop,
-                };
-                if (!isLegalBid(mockRound, currentBot.playerId, bid as Bid, gameState.compulsoryKlop)) {
-                  bid = PASS;
-                }
+              if (bid !== PASS && !getLegalBidsForState(gameState).includes(bid)) {
+                bid = PASS;
               }
               nextState = dispatchBid(gameState, currentBot.playerId, bid);
               break;
             }
               
-            case "calling":
+            case "calling": {
               const suit = currentBot.chooseCalledKing(gameState);
               nextState = dispatchCall(gameState, currentBot.playerId, suit);
               break;
+            }
               
             case "talon":
               if (gameState.pickedTalonGroupIndex === undefined) {
                 const groupIndex = currentBot.chooseTalonGroup(gameState);
                 nextState = dispatchTalonPick(gameState, currentBot.playerId, groupIndex);
               } else {
-                let exchangeCount = 3;
-                if (gameState.contract === "dve" || gameState.contract === "solo_dve") exchangeCount = 2;
-                if (gameState.contract === "ena" || gameState.contract === "solo_ena") exchangeCount = 1;
-                
+                const exchangeCount = getExchangeCount(gameState.contract);
+
                 const hand = nextState.hands[currentBot.playerId]!;
                 const discards = currentBot.chooseDiscards(gameState, hand, exchangeCount);
                 nextState = dispatchDiscard(gameState, currentBot.playerId, discards);
@@ -328,7 +342,7 @@ export function useTarokGame() {
               break;
             }
               
-            case "playing":
+            case "playing": {
               const botHandInRound = gameState.trickRound?.hands.find(h => h.playerId === currentBot.playerId)?.cards;
               if (!botHandInRound || botHandInRound.length === 0) return;
               
@@ -341,6 +355,7 @@ export function useTarokGame() {
               });
               nextState = { ...nextState, hands: nextHands };
               break;
+            }
           }
 
           // Check if trick just completed
@@ -386,6 +401,7 @@ export function useTarokGame() {
 
         } catch (e) {
           console.error("Bot Error:", e);
+          setErrorMessage("Napaka bota: " + (e as Error).message);
         }
       }, botDelay);
 
@@ -407,85 +423,30 @@ export function useTarokGame() {
     const t = setTimeout(() => {
       scoringScheduledRef.current = false;
       try {
-        const score = calculateGameScore(gameState);
-
-        // stevec: radlc aktivnega igralca (deklaranta), ne partnerja
-        const declarerId = gameState.declarer;
-        const declarerRadlciCount =
-          declarerId !== undefined ? (playerRadlci[declarerId] ?? 0) : 0;
-
-        // Klop ima posebno logiko radlcev
-        let finalValue: number;
-        let radlciUsed: number;
-
-        if (gameState.contract === "klop") {
-          finalValue = 0; // klop se prikazuje drugače
-          radlciUsed = 0;
-        } else {
-          const applied = applyRadlci(score.totalBeforeRadlci, declarerRadlciCount);
-          finalValue = applied.finalValue;
-          radlciUsed = applied.radlciUsed;
-        }
-
-        // Posodobi radlce:
-        // - Aktivni igralec: če zmaga, porabi svoj radlc (reset na 0)
-        // - Vsi: dobijo +newRadlciEarned
-        setPlayerRadlci(prev => {
-          const next = [...prev];
-          for (let i = 0; i < next.length; i++) {
-            next[i] = (next[i] ?? 0) + score.newRadlciEarned;
-          }
-          if (gameState.contract === "klop") {
-            for (const winnerId of (score.klopWinners ?? [])) {
-              next[winnerId] = 0;
-            }
-          } else if (score.isWin && radlciUsed > 0 && declarerId !== undefined) {
-            next[declarerId] = 0;
-          }
-          return next;
+        // Obračun (točke po igralcih in radlci) je v celoti v pogonu.
+        const settlement = settleGame(gameState, {
+          radlci: Object.fromEntries(playerRadlci.map((r, i) => [i, r])),
         });
+        const score = settlement.score;
+        const radlciUsed = settlement.radlciUsed;
+        const perPlayerDelta = gameState.playerOrder.map(
+          (pid) => settlement.perPlayerDelta[pid] ?? 0,
+        );
+        // Klop nima skupne vrednosti igre; v zgodovini pokažemo izid človeka.
+        const roundFinalValue =
+          gameState.contract === "klop"
+            ? (perPlayerDelta[HUMAN_PLAYER] ?? 0)
+            : settlement.finalValue;
 
-        // ── Delta točk za vsakega igralca ────────────────────────────────
-        // Družabno pisanje: piše samo aktivna ekipa; branilci 0.
-        const perPlayerDelta = [0, 0, 0, 0];
-        let roundFinalValue = finalValue;
+        setPlayerRadlci(
+          gameState.playerOrder.map((pid) => settlement.radlciAfter[pid] ?? 0),
+        );
 
-        if (gameState.contract === "klop") {
-          for (const pid of gameState.playerOrder) {
-            const isWinner = score.klopWinners?.includes(pid);
-            const isLoser = score.klopLosers?.includes(pid);
-            let base: number;
-            if (isWinner) {
-              base = 70;
-            } else if (isLoser) {
-              base = -70;
-            } else {
-              base = -(score.klopPlayerPoints?.[pid] ?? 0);
-            }
-            const ownRadlc = playerRadlci[pid] ?? 0;
-            perPlayerDelta[pid] = base * Math.pow(2, ownRadlc);
-          }
-          roundFinalValue = perPlayerDelta[0] ?? 0;
-        } else {
-          const declarerTeamIds = new Set(gameState.teams?.declarerTeam ?? []);
-
-          for (const pid of gameState.playerOrder) {
-            if (declarerTeamIds.has(pid)) {
-              perPlayerDelta[pid] = roundFinalValue;
-            }
-            // branilci ostanejo 0 (razen mondfang spodaj)
-          }
-        }
-
-        // Dodaj Mondfang kazen tistemu, ki ga je izgubil
-        if (score.mondfang < 0 && score.mondfangPlayerId !== undefined) {
-          perPlayerDelta[score.mondfangPlayerId] += score.mondfang; // -21
-        }
-
-        // Posodobi kumulativne točke; točno 0 → obvezni klop naslednji krog
+        // Posodobi kumulativne točke; kdor s tem krogom pristane točno na 0,
+        // sproži obvezni klop v naslednjem krogu.
         setPlayerScores(prev => {
           const next = prev.map((s, i) => s + (perPlayerDelta[i] ?? 0));
-          if (next.some((s) => s === 0)) {
+          if (next.some((s, i) => s === 0 && (perPlayerDelta[i] ?? 0) !== 0)) {
             pendingCompulsoryKlopRef.current = true;
           }
           return next;
@@ -511,11 +472,12 @@ export function useTarokGame() {
         }]);
       } catch (e) {
         console.error("Scoring error:", e);
+        setErrorMessage("Napaka pri obračunu: " + (e as Error).message);
       }
     }, 3000);
 
     return () => clearTimeout(t);
-  }, [gameState, roundScore, playerRadlci, playerNames, currentRound]);
+  }, [gameState, roundScore, playerRadlci, playerNames, currentRound, HUMAN_PLAYER]);
 
   // Human actions
   const playBid = (action: BiddingAction) => {

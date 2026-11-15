@@ -58,3 +58,20 @@
     @apply card-face card-md;
   }
 }
+
+/* Na ozkih zaslonih zmanjšamo karte, da ostane roka berljiva. */
+@media (max-width: 640px) {
+  .card {
+    width: 64px;
+    height: 96px;
+    padding: 0.375rem;
+  }
+
+  .card-suit-symbol {
+    font-size: 2rem;
+  }
+
+  .card-tarok-symbol {
+    font-size: 1.5rem;
+  }
+}

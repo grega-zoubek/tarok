@@ -1,4 +1,4 @@
-import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType, Suit, ContraTarget } from "@tarok/engine";
+import type { GameState, Card, PlayerId, BiddingAction, Bid, AnnouncementType, Suit, ContraTarget, Rng } from "@tarok/engine";
 import {
   getGameLegalPlays,
   PASS,
@@ -16,10 +16,15 @@ import {
   getCardValue,
   canPlaceContra,
   canMakeAnnouncement,
+  getHand,
+  nextInt,
+  shuffle,
 } from "@tarok/engine";
 import type { TarokBot } from "./random-bot.js";
 
 export type BotDifficulty = 1 | 2 | 3 | 4 | 5;
+
+const defaultRng: Rng = { next: () => Math.random() };
 
 const SUITS: readonly Suit[] = ["hearts", "spades", "clubs", "diamonds"];
 
@@ -73,12 +78,13 @@ export class HeuristicBot implements TarokBot {
   constructor(
     public readonly playerId: PlayerId,
     public readonly difficulty: BotDifficulty,
+    private readonly rng: Rng = defaultRng,
   ) {}
 
   chooseBid(state: GameState): BiddingAction {
     if (this.difficulty === 1) return PASS;
 
-    const myHand = state.hands[this.playerId] || [];
+    const myHand = getHand(state, this.playerId);
     const taroksCount = myHand.filter(isTarokCard).length;
     const hasSkis = myHand.some((c) => isTarokCard(c) && c.rank === "skis");
     const hasMond = myHand.some((c) => isTarokCard(c) && c.rank === 21);
@@ -160,7 +166,7 @@ export class HeuristicBot implements TarokBot {
 
   chooseCalledKing(state: GameState): "hearts" | "spades" | "clubs" | "diamonds" | undefined {
     if (this.difficulty <= 2) {
-      return SUITS[Math.floor(Math.random() * SUITS.length)];
+      return SUITS[nextInt(this.rng, SUITS.length)];
     }
 
     const myHand = state.hands[this.playerId] || [];
@@ -183,7 +189,7 @@ export class HeuristicBot implements TarokBot {
     if (!state.talon || state.talonGroups?.length === 0) return 0;
 
     if (this.difficulty <= 2) {
-      return Math.floor(Math.random() * state.talonGroups!.length);
+      return nextInt(this.rng, state.talonGroups!.length);
     }
 
     const myHand = state.hands[this.playerId] || [];
@@ -221,7 +227,7 @@ export class HeuristicBot implements TarokBot {
     const taroks = discardable.filter(isTarokCard);
 
     if (this.difficulty === 1) {
-      const combined = [...suitCards, ...taroks].sort(() => Math.random() - 0.5);
+      const combined = shuffle([...suitCards, ...taroks], this.rng);
       return combined.slice(0, count);
     }
 
@@ -404,7 +410,7 @@ export class HeuristicBot implements TarokBot {
     if (legalPlays.length === 1) return legalPlays[0]!;
 
     if (this.difficulty === 1) {
-      return legalPlays[Math.floor(Math.random() * legalPlays.length)]!;
+      return legalPlays[nextInt(this.rng, legalPlays.length)]!;
     }
 
     const tarokPlays = legalPlays.filter(isTarokCard).sort((a, b) => tarokStrength(a) - tarokStrength(b));

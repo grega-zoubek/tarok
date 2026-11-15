@@ -120,6 +120,7 @@ export {
   PASS,
   createBiddingRound,
   getCurrentBiddingPlayer,
+  getLegalBids,
   isLegalBid,
   placeBid,
   resolveBidding,
@@ -129,17 +130,16 @@ export {
   isBidAllowedInCompulsoryKlop,
 } from "./bidding/bidding.js";
 export type { Bid, Pass, BiddingAction, BiddingRound, BiddingRoundConfig, BiddingResult } from "./bidding/bidding.js";
-export { createCallingRound, isKing, holdsKing, callKing, skipCalling, determineTeams } from "./calling/calling.js";
-export type { CalledKing, CallingRound, Teams } from "./calling/calling.js";
-export { createTalonExchange, pickTalonGroup, isLegalDiscard, discardCards } from "./talon/talon.js";
+export { isKing, holdsKing, determineTeams } from "./calling/calling.js";
+export type { CalledKing, Teams } from "./calling/calling.js";
+export { createTalonExchange, pickTalonGroup, isLegalDiscard, discardCards, getDiscardPool } from "./talon/talon.js";
 export type { TalonExchangeRound } from "./talon/talon.js";
 export {
   calculateGameScore,
   applyRadlci,
+  roundToNearest5,
   CONTRACT_BASE_VALUES,
-  CONTRACT_VALUES,
   BONUS_BASE_VALUES,
-  ANNOUNCEMENT_VALUES,
   RADLC_AWARDING_CONTRACTS,
   NO_DIFFERENCE_CONTRACTS,
 } from "./scoring/game-scoring.js";
@@ -163,7 +163,22 @@ export type {
   AnnouncementsRound,
   ContraTarget,
 } from "./announcements/announcements.js";
-export { createInitialGameState } from "./state/state.js";
+export {
+  createInitialGameState,
+  getBiddingRound,
+  getExchangeCount,
+  getHand,
+  getLegalBidsForState,
+} from "./state/state.js";
+export { settleGame } from "./scoring/settlement.js";
+export type {
+  GameSettlement,
+  PlayerSettlement,
+  SettlementOptions,
+  SettlementRole,
+} from "./scoring/settlement.js";
+export { applyAction, getActionPlayer } from "./state/actions.js";
+export type { GameAction } from "./state/actions.js";
 export type { GameState, GameStateConfig, GamePhase } from "./state/state.js";
 export {
   dispatchBid,
@@ -176,5 +191,6 @@ export {
   dispatchContra,
   dispatchPlay,
   canMakeAnnouncement,
+  getAnnouncementError,
   getGameLegalPlays,
 } from "./state/state.js";

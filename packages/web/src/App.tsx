@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTarokGame, type BotConfig, type RoundResult } from './hooks/useTarokGame';
 import { PlayingCard } from './components/PlayingCard';
+import { SESSION_STORAGE_KEY } from "./lib/session";
 import {
   type Card,
   type Bid,
@@ -90,7 +91,7 @@ function App() {
   ]);
 
   const handleQuitGame = () => {
-    sessionStorage.removeItem("tarokSession");
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
     window.location.reload();
   };
 
@@ -136,7 +137,7 @@ function App() {
           </div>
 
           <button
-            onClick={() => { sessionStorage.removeItem("tarokSession"); window.location.reload(); }}
+            onClick={() => { sessionStorage.removeItem(SESSION_STORAGE_KEY); window.location.reload(); }}
             className="w-full py-4 bg-yellow-500 text-green-900 font-black text-xl rounded-xl hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all"
           >
             NOVA IGRA

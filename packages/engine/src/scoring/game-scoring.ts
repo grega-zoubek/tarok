@@ -1,7 +1,7 @@
 import type { GameState } from "../state/state.js";
 import { type PlayerId, type Bid } from "../bidding/bidding.js";
 import type { Card } from "../cards/card.js";
-import { isTarokCard, cardKey } from "../cards/card.js";
+import { isTarokCard, isSuitCard, cardKey } from "../cards/card.js";
 import { countPoints, hasTrula, hasAllKings } from "./scoring.js";
 import type { AnnouncementType } from "../announcements/announcements.js";
 
@@ -33,9 +33,6 @@ export const CONTRACT_BASE_VALUES: Record<Bid | "klop", number> = {
   valat:        500,
 };
 
-// Stara oznaka ohranjena za združljivost
-export const CONTRACT_VALUES = CONTRACT_BASE_VALUES;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Vrednosti bonusov — tiha vrednost (napovedana = 2×)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,9 +43,6 @@ export const BONUS_BASE_VALUES: Record<AnnouncementType, number> = {
   kralj_ultimo: 10,
   valat:        250,
 };
-
-// Stara oznaka ohranjena za združljivost
-export const ANNOUNCEMENT_VALUES = BONUS_BASE_VALUES;
 
 /** Igre, ki dajo vsakemu igralcu +1 radlc po koncu igre */
 export const RADLC_AWARDING_CONTRACTS = new Set<Bid | "klop">([
@@ -66,8 +60,6 @@ export interface BonusResult {
   readonly achieved: boolean;
   /** + pomeni dobiček za aktivno ekipo, − pomeni izgubo */
   readonly value: number;
-  /** @deprecated Uporabi value */
-  readonly radlci: number;
 }
 
 export interface TeamScoreResult {
@@ -75,8 +67,6 @@ export interface TeamScoreResult {
   readonly wonTrula: boolean;
   readonly wonKings: boolean;
   readonly collectedCards: readonly Card[];
-  /** @deprecated Uporabi wonTrula / wonKings */
-  readonly wonBonuses: { readonly trula: boolean; readonly kings: boolean };
 }
 
 export interface GameScoreResult {
@@ -87,13 +77,9 @@ export interface GameScoreResult {
 
   /** Zaokrožena razlika točk (koraki po 5); 0 za igre brez razlike */
   readonly razlika: number;
-  /** @deprecated Uporabi razlika */
-  readonly pointDifference: number;
 
   /** Vrednost pogodbe z razliko in predznakom (+ zmaga, − poraz) */
   readonly contractValue: number;
-  /** @deprecated Uporabi contractValue */
-  readonly contractRadlci: number;
 
   /** Skupna vrednost vseh bonusov */
   readonly bonusValue: number;
@@ -107,8 +93,6 @@ export interface GameScoreResult {
 
   /** Skupaj pred upoštevanjem radlcev (contractValue + bonusValue) */
   readonly totalBeforeRadlci: number;
-  /** @deprecated Uporabi totalBeforeRadlci */
-  readonly totalRadlci: number;
 
   /** Novi radlci, ki jih dobi vsak aktivni igralec (+1 za klop/berač/valat tip) */
   readonly newRadlciEarned: number;
@@ -120,13 +104,12 @@ export interface GameScoreResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zaokroži navzdol na najbližji večkratnik 5
-// Pravilo: cifra 8,9,0,1,2 → zaokroži na 0; cifra 3,4,5,6,7 → zaokroži na 5
+// Zaokroži na najbližji večkratnik 5 (pravilo: "pike zaokrožimo na 5").
 // Primer: 49 → 50,  47 → 45,  43 → 45,  41 → 40,  55 → 55,  57 → 55
 // ─────────────────────────────────────────────────────────────────────────────
-function roundToNearest5(n: number): number {
-    return Math.round(n / 5) * 5;
-  }
+export function roundToNearest5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
 
 /**
  * Aplikacija radlcev: vsak radlc podvoji vrednost igre.
@@ -296,7 +279,7 @@ export function calculateGameScore(state: GameState): GameScoreResult {
         v = -base;
       }
     }
-    bonuses.push({ type, announcedBy, achieved, value: v, radlci: v });
+    bonuses.push({ type, announcedBy, achieved, value: v });
   }
 
   // Pogodbe pri katerih se trula in kralji NE štejejo
@@ -422,27 +405,22 @@ export function calculateGameScore(state: GameState): GameScoreResult {
       wonTrula: declarerWonTrula,
       wonKings: declarerWonKings,
       collectedCards: declarerCollected,
-      wonBonuses: { trula: declarerWonTrula, kings: declarerWonKings },
     },
     defendingTeam: {
       cardPoints: defendingPoints,
       wonTrula: defendingWonTrula,
       wonKings: defendingWonKings,
       collectedCards: defendingCollected,
-      wonBonuses: { trula: defendingWonTrula, kings: defendingWonKings },
     },
     uncollectedCards,
     isWin,
     razlika,
-    pointDifference: razlika,
     contractValue,
-    contractRadlci: contractValue,
     bonusValue,
     mondfang,
     mondfangPlayerId,
     bonuses,
     totalBeforeRadlci,
-    totalRadlci: totalBeforeRadlci,
     newRadlciEarned,
   };
 }
@@ -481,7 +459,7 @@ function calculateKlopScore(state: GameState): GameScoreResult {
 
   const empty: TeamScoreResult = {
     cardPoints: 0, wonTrula: false, wonKings: false,
-    collectedCards: [], wonBonuses: { trula: false, kings: false },
+    collectedCards: [],
   };
 
   return {
@@ -490,15 +468,14 @@ function calculateKlopScore(state: GameState): GameScoreResult {
     uncollectedCards: [],
     isWin: winners.length > 0,
     razlika: 0,
-    pointDifference: 0,
     contractValue: 0,
-    contractRadlci: 0,
     bonusValue: 0,
     mondfang: 0,
     bonuses: [],
     totalBeforeRadlci: 0,
-    totalRadlci: 0,
-    newRadlciEarned: 0,
+    // Klop vsem igralcem prinese nov radlc (stevec-taroka.si: "Če se je igralo
+    // igro klop ... dobi vsak igralec en dodaten radlc").
+    newRadlciEarned: 1,
     mondfangPlayerId: undefined,
     klopPlayerPoints: playerPoints,
     klopWinners: winners,

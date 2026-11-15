@@ -46,12 +46,17 @@ export interface AnnouncementsRound {
 export function createAnnouncementsRound(
   playerOrder: readonly PlayerId[],
   declarer: PlayerId,
-  startingPlayer: PlayerId // Usually forehand or declarer depending on exact variation, but typically forehand starts
+  /** Pravilo: napovedi vedno začne aktivni igralec (deklarant). */
+  startingPlayer: PlayerId = declarer,
 ): AnnouncementsRound {
   const startingIndex = playerOrder.indexOf(startingPlayer);
   if (startingIndex === -1) {
     throw new Error("Starting player must be in the player order");
   }
+
+  const announcements = Object.fromEntries(
+    playerOrder.map((playerId) => [playerId, [] as readonly PlayerAnnouncement[]]),
+  ) as Record<PlayerId, readonly PlayerAnnouncement[]>;
 
   return {
     playerOrder: [...playerOrder],
@@ -232,9 +237,10 @@ export function passAnnouncements(
   }
 
   const nextConsecutivePasses = round.consecutivePasses + 1;
-  const isFinished = nextConsecutivePasses === 4;
+  const isFinished = nextConsecutivePasses === round.playerOrder.length;
 
-  let nextPlayerIndex = (round.currentPlayerIndex + 1) % 4;
+  const nextPlayerIndex =
+    (round.currentPlayerIndex + 1) % round.playerOrder.length;
 
   return {
     ...round,

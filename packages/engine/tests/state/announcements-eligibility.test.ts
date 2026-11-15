@@ -6,7 +6,6 @@ import {
   dispatchTalonPick,
   dispatchDiscard,
   dispatchAnnouncement,
-  dispatchAnnouncementPass,
 } from "../../src/state/state.js";
 import { createTarokDeck } from "../../src/cards/deck.js";
 import { PASS, type Bid } from "../../src/bidding/bidding.js";
@@ -50,10 +49,6 @@ function setupAnnouncementsPhase(
   // Preverimo, da smo v announcements fazi
   expect(state.phase).toBe("announcements");
   return state;
-}
-
-function findCard(hand: Card[], pred: (c: Card) => boolean): Card | undefined {
-  return hand.find(pred);
 }
 
 describe("Announcement eligibility (pravila)", () => {

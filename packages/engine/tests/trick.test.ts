@@ -15,7 +15,6 @@ import {
 const pagat = TAROK_CATALOG.find((card) => card.name === "pagat")!;
 const mond = TAROK_CATALOG.find((card) => card.name === "mond")!;
 const skis = TAROK_CATALOG.find((card) => card.name === "skis")!;
-const tarokXx = TAROK_CATALOG.find((card) => card.name === "xx")!;
 const heartKing = SUIT_CATALOG.find(
   (card) => card.suit === "hearts" && card.rank === "king",
 )!;
