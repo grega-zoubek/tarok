@@ -13,6 +13,6 @@ export default defineConfig({
     host: "127.0.0.1",
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
   },
 });

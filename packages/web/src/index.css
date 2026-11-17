@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #fde047;
+  outline-offset: 3px;
+}
+
 @layer components {
   .card-face {
     @apply relative select-none overflow-hidden rounded-lg shadow-lg;

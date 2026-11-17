@@ -82,8 +82,6 @@ function moveCardsToHand(state: GameState, targetPid: number, cards: readonly Ca
 }
 
 const pagat = createTarokDeck().find((card) => card.kind === "tarok" && card.rank === 1)!;
-const mond = createTarokDeck().find((card) => card.kind === "tarok" && card.rank === 21)!;
-const skis = createTarokDeck().find((card) => card.kind === "tarok" && card.name === "skis")!;
 const spadesKing = createTarokDeck().find(
   (card) => card.kind === "suit" && card.suit === "spades" && card.rank === "king",
 )!;
@@ -97,18 +95,14 @@ describe("pravila napovedi", () => {
   it("igralec, ki ni na potezi, ne sme napovedati", () => {
     const state = createAnnouncementsState();
 
-    expect(() => dispatchAnnouncement(state, 1, "kralji")).toThrow(
-      "not player 1's turn",
-    );
+    expect(() => dispatchAnnouncement(state, 1, "kralji")).toThrow("not player 1's turn");
   });
 
   it("prepreči dvojno napoved iste vrste", () => {
     const state = createAnnouncementsState();
     const announced = dispatchAnnouncement(state, 0, "kralji");
 
-    expect(() => dispatchAnnouncement(announced, 0, "kralji")).toThrow(
-      "already announced kralji",
-    );
+    expect(() => dispatchAnnouncement(announced, 0, "kralji")).toThrow("already announced kralji");
   });
 
   it("po passu igralec ne more več napovedati", () => {
@@ -116,9 +110,7 @@ describe("pravila napovedi", () => {
     const passed = dispatchAnnouncementPass(state, 0);
 
     expect(passed.currentPlayer).toBe(1);
-    expect(() => dispatchAnnouncement(passed, 0, "kralji")).toThrow(
-      "not player 0's turn",
-    );
+    expect(() => dispatchAnnouncement(passed, 0, "kralji")).toThrow("not player 0's turn");
   });
 
   it("valat lahko napove samo aktivna ekipa", () => {
@@ -134,9 +126,7 @@ describe("pravila napovedi", () => {
   it("kralj_ultimo lahko napove samo imetnik klicanega kralja", () => {
     const state = moveCardsToHand(createAnnouncementsState(), 1, [spadesKing]);
 
-    expect(getAnnouncementError(state, 0, "kralj_ultimo")).toMatch(
-      /ima klicanega kralja/,
-    );
+    expect(getAnnouncementError(state, 0, "kralj_ultimo")).toMatch(/ima klicanega kralja/);
 
     const afterDeclarer = dispatchAnnouncementPass(state, 0);
     expect(afterDeclarer.currentPlayer).toBe(1);
@@ -144,9 +134,7 @@ describe("pravila napovedi", () => {
 
     const announced = dispatchAnnouncement(afterDeclarer, 1, "kralj_ultimo");
     expect(
-      announced.announcementsRound?.announcements[1]?.some(
-        (a) => a.type === "kralj_ultimo",
-      ),
+      announced.announcementsRound?.announcements[1]?.some((a) => a.type === "kralj_ultimo"),
     ).toBe(true);
   });
 

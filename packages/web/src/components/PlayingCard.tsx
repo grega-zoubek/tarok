@@ -8,6 +8,7 @@ interface CardProps {
   faceDown?: boolean;
   onClick?: (() => void) | undefined;
   disabled?: boolean;
+  selected?: boolean | undefined;
   className?: string;
   /** Smaller rendering for overlays / talon / open-hand previews. */
   size?: "sm" | "md" | "lg";
@@ -81,6 +82,7 @@ export const PlayingCard = React.memo(function PlayingCard({
   faceDown = false,
   onClick,
   disabled,
+  selected,
   className = "",
   size = "md",
 }: CardProps) {
@@ -96,6 +98,7 @@ export const PlayingCard = React.memo(function PlayingCard({
       className={`card-face ${SIZE_CLASS[size]} disabled:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300 focus-visible:ring-offset-2 focus-visible:ring-offset-green-900 ${interactive ? "cursor-pointer" : "cursor-default"} ${className}`}
       onClick={interactive ? onClick : undefined}
       aria-label={label}
+      aria-pressed={selected}
       title={label}
     >
       <CardArtwork key={src} src={src} label={label} />

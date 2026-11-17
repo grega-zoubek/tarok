@@ -6,13 +6,7 @@ import { type PlayerId } from "../bidding/bidding.js";
  * (but they lose double points if they fail).
  * If unannounced (tiho), they are worth their base points if succeeded.
  */
-export const ANNOUNCEMENTS = [
-  "trula",
-  "kralji",
-  "pagat_ultimo",
-  "kralj_ultimo",
-  "valat",
-] as const;
+export const ANNOUNCEMENTS = ["trula", "kralji", "pagat_ultimo", "kralj_ultimo", "valat"] as const;
 
 export type AnnouncementType = (typeof ANNOUNCEMENTS)[number];
 
@@ -62,9 +56,7 @@ export function createAnnouncementsRound(
     playerOrder: [...playerOrder],
     declarer,
     currentPlayerIndex: startingIndex,
-    announcements: {
-      0: [], 1: [], 2: [], 3: [],
-    },
+    announcements,
     gameMultiplier: 1,
     gameLastContraBy: undefined,
     consecutivePasses: 0,
@@ -80,7 +72,7 @@ export function getCurrentAnnouncingPlayer(round: AnnouncementsRound): PlayerId 
 export function placeAnnouncement(
   round: AnnouncementsRound,
   playerId: PlayerId,
-  announcementType: AnnouncementType
+  announcementType: AnnouncementType,
 ): AnnouncementsRound {
   if (round.isFinished) {
     throw new Error("Announcements round is already finished");
@@ -91,8 +83,8 @@ export function placeAnnouncement(
   }
 
   const currentAnnouncements = round.announcements[playerId] || [];
-  
-  if (currentAnnouncements.some(a => a.type === announcementType)) {
+
+  if (currentAnnouncements.some((a) => a.type === announcementType)) {
     throw new Error(`Player ${playerId} has already announced ${announcementType}`);
   }
 
@@ -226,7 +218,7 @@ export function placeContra(
 
 export function passAnnouncements(
   round: AnnouncementsRound,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): AnnouncementsRound {
   if (round.isFinished) {
     throw new Error("Announcements round is already finished");
@@ -239,8 +231,7 @@ export function passAnnouncements(
   const nextConsecutivePasses = round.consecutivePasses + 1;
   const isFinished = nextConsecutivePasses === round.playerOrder.length;
 
-  const nextPlayerIndex =
-    (round.currentPlayerIndex + 1) % round.playerOrder.length;
+  const nextPlayerIndex = (round.currentPlayerIndex + 1) % round.playerOrder.length;
 
   return {
     ...round,

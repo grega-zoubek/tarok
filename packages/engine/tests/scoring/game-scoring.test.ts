@@ -81,6 +81,179 @@ function createMockFinishedGameState(): GameState {
 }
 
 describe("Game Scoring", () => {
+  it.each(["trula", "kralji"] as const)(
+    "failed defender %s is a gain for the active team, including kontra",
+    (type) => {
+      const state = createMockFinishedGameState();
+      const announced: GameState = {
+        ...state,
+        talon: [],
+        discardedCards: [],
+        trickRound: {
+          ...state.trickRound!,
+          capturedTricks: state.trickRound!.capturedTricks.map((ct) => ({
+            ...ct,
+            trick: {
+              ...ct.trick,
+              plays: ct.trick.plays.filter((p) => p.card.kind === "suit" && p.card.rank !== "king"),
+            },
+          })),
+        },
+        announcementsRound: {
+          playerOrder: [0, 1, 2, 3],
+          declarer: 0,
+          currentPlayerIndex: -1,
+          announcements: {
+            0: [],
+            1: [{ type, isContra: true, multiplierLevel: 2, lastContraBy: 0 }],
+            2: [],
+            3: [],
+          },
+          gameMultiplier: 1,
+          gameLastContraBy: undefined,
+          consecutivePasses: 4,
+          isFinished: true,
+        },
+      };
+      expect(calculateGameScore(announced).bonuses.find((b) => b.type === type)).toEqual({
+        type,
+        announcedBy: "defenders",
+        achieved: false,
+        value: 40,
+      });
+    },
+  );
+
+  it.each([false, true])("king ultimo may be won by a teammate (announced=%s)", (announced) => {
+    const state = createMockFinishedGameState();
+    const deck = createTarokDeck();
+    const cards = [
+      deck.find((c) => c.kind === "tarok" && c.rank === 20)!,
+      deck.find((c) => c.kind === "suit" && c.suit === "hearts" && c.rank === "king")!,
+      deck.find((c) => c.kind === "suit" && c.suit === "clubs" && c.rank === "seven")!,
+      deck.find((c) => c.kind === "suit" && c.suit === "spades" && c.rank === "seven")!,
+    ];
+    const game: GameState = {
+      ...state,
+      talon: [],
+      discardedCards: [],
+      calledKing: { suit: "hearts", rank: "king" },
+      teams: { declarerTeam: [0, 1], defendingTeam: [2, 3] },
+      announcementsRound: {
+        playerOrder: [0, 1, 2, 3],
+        declarer: 0,
+        currentPlayerIndex: -1,
+        announcements: {
+          0: [],
+          1: announced
+            ? [
+                {
+                  type: "kralj_ultimo",
+                  isContra: false,
+                  multiplierLevel: 1,
+                  lastContraBy: undefined,
+                },
+              ]
+            : [],
+          2: [],
+          3: [],
+        },
+        gameMultiplier: 1,
+        gameLastContraBy: undefined,
+        consecutivePasses: 4,
+        isFinished: true,
+      },
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: [
+          {
+            winner: 0,
+            trick: { leader: 0, plays: cards.map((card, playerId) => ({ card, playerId })) },
+          },
+        ],
+      },
+    };
+    const bonus = calculateGameScore(game).bonuses.find((b) => b.type === "kralj_ultimo");
+    expect(bonus?.achieved).toBe(true);
+    expect(bonus?.value).toBe(announced ? 20 : 10);
+  });
+
+  it("scores opposed trula announcements with each side's own multiplier", () => {
+    const state = createMockFinishedGameState();
+    const trula = createTarokDeck().filter(
+      (c) => c.kind === "tarok" && (c.rank === 1 || c.rank === 21 || c.rank === "skis"),
+    );
+    const filler = createTarokDeck().find((c) => c.kind === "suit" && c.rank !== "king")!;
+    const game: GameState = {
+      ...state,
+      talon: [],
+      discardedCards: [],
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: [
+          {
+            winner: 1,
+            trick: {
+              leader: 0,
+              plays: [...trula, filler].map((card, playerId) => ({ card, playerId })),
+            },
+          },
+        ],
+      },
+      announcementsRound: {
+        playerOrder: [0, 1, 2, 3],
+        declarer: 0,
+        currentPlayerIndex: -1,
+        announcements: {
+          0: [{ type: "trula", isContra: true, multiplierLevel: 4, lastContraBy: 1 }],
+          1: [{ type: "trula", isContra: true, multiplierLevel: 2, lastContraBy: 0 }],
+          2: [],
+          3: [],
+        },
+        gameMultiplier: 1,
+        gameLastContraBy: undefined,
+        consecutivePasses: 4,
+        isFinished: true,
+      },
+    };
+    expect(calculateGameScore(game).bonuses.filter((b) => b.type === "trula")).toEqual([
+      { type: "trula", announcedBy: "declarer", achieved: false, value: -80 },
+      { type: "trula", announcedBy: "defenders", achieved: true, value: -40 },
+    ]);
+  });
+
+  it("pagat ultimo is not achieved when the pagat player's teammate wins", () => {
+    const state = createMockFinishedGameState();
+    const deck = createTarokDeck();
+    const pagat = deck.find((c) => c.kind === "tarok" && c.rank === 1)!;
+    const higher = deck.find((c) => c.kind === "tarok" && c.rank === 20)!;
+    const filler = deck.filter((c) => c.kind === "suit" && c.rank !== "king").slice(0, 2);
+    const game: GameState = {
+      ...state,
+      talon: [],
+      discardedCards: [],
+      teams: { declarerTeam: [0, 1], defendingTeam: [2, 3] },
+      trickRound: {
+        ...state.trickRound!,
+        capturedTricks: [
+          {
+            winner: 0,
+            trick: {
+              leader: 0,
+              plays: [higher, pagat, ...filler].map((card, playerId) => ({ card, playerId })),
+            },
+          },
+        ],
+      },
+    };
+    expect(calculateGameScore(game).bonuses.find((b) => b.type === "pagat_ultimo")).toEqual({
+      type: "pagat_ultimo",
+      announcedBy: "silent",
+      achieved: false,
+      value: -25,
+    });
+  });
+
   it("throws if the game is not finished", () => {
     const state = createMockFinishedGameState();
     const playingState = { ...state, phase: "playing" } as GameState;
@@ -99,9 +272,9 @@ describe("Game Scoring", () => {
     };
     const result = calculateGameScore(beracState);
     // Ni trule / kraljev v bonusih
-    const hasTrulaBonus  = result.bonuses.some(b => b.type === "trula");
-    const hasKraljiBonus = result.bonuses.some(b => b.type === "kralji");
-    expect(hasTrulaBonus,  "berač ne sme šteti trule").toBe(false);
+    const hasTrulaBonus = result.bonuses.some((b) => b.type === "trula");
+    const hasKraljiBonus = result.bonuses.some((b) => b.type === "kralji");
+    expect(hasTrulaBonus, "berač ne sme šteti trule").toBe(false);
     expect(hasKraljiBonus, "berač ne sme šteti kraljev").toBe(false);
     // Poraz: deklarant je vzel štih (winner=0)
     expect(result.isWin).toBe(false);
@@ -118,8 +291,8 @@ describe("Game Scoring", () => {
       teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
     };
     const result = calculateGameScore(soloBrezState);
-    expect(result.bonuses.some(b => b.type === "trula")).toBe(false);
-    expect(result.bonuses.some(b => b.type === "kralji")).toBe(false);
+    expect(result.bonuses.some((b) => b.type === "trula")).toBe(false);
+    expect(result.bonuses.some((b) => b.type === "kralji")).toBe(false);
   });
 
   it("solo_brez: zmaga je ≥36 točk (ne vsi štihi), vrednost flat ±80", () => {
@@ -164,7 +337,10 @@ describe("Game Scoring", () => {
         plays: [
           { playerId: 0, card: { kind: "tarok" as const, rank: 2 as const, name: "ii" as const } },
           { playerId: 1, card: { kind: "tarok" as const, rank: 3 as const, name: "iii" as const } },
-          { playerId: 2, card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const } },
+          {
+            playerId: 2,
+            card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const },
+          },
           { playerId: 3, card: { kind: "tarok" as const, rank: 5 as const, name: "v" as const } },
         ],
       },
@@ -203,16 +379,15 @@ describe("Game Scoring", () => {
       if (bonus.type === "trula" || bonus.type === "kralji") {
         // Če je bonus prisoten, mora biti announcedBy !== "silent"
         // ALI mora biti ena ekipa res imela vse karte
-        const allWithDeclarer = bonus.type === "trula"
-          ? result.declarerTeam.wonTrula
-          : result.declarerTeam.wonKings;
-        const allWithDefenders = bonus.type === "trula"
-          ? result.defendingTeam.wonTrula
-          : result.defendingTeam.wonKings;
+        const allWithDeclarer =
+          bonus.type === "trula" ? result.declarerTeam.wonTrula : result.declarerTeam.wonKings;
+        const allWithDefenders =
+          bonus.type === "trula" ? result.defendingTeam.wonTrula : result.defendingTeam.wonKings;
         // Bonus je dovoljen le če ga je kdo napovedal ali ena ekipa ima vse
         const announced = bonus.announcedBy !== "silent";
-        expect(allWithDeclarer || allWithDefenders || announced,
-          `${bonus.type} ne sme biti ocenjen pri razdeljeni truli/kraljih brez napovedi`
+        expect(
+          allWithDeclarer || allWithDefenders || announced,
+          `${bonus.type} ne sme biti ocenjen pri razdeljeni truli/kraljih brez napovedi`,
         ).toBe(true);
       }
     }
@@ -228,7 +403,7 @@ describe("Game Scoring", () => {
       teams: { declarerTeam: [0], defendingTeam: [1, 2, 3] },
     };
     const score = calculateGameScore(beracState);
-    expect(score.isWin).toBe(false);   // Vzel štih → poraz
+    expect(score.isWin).toBe(false); // Vzel štih → poraz
     expect(score.contractValue).toBeLessThan(0); // Negativno
   });
 
@@ -244,10 +419,10 @@ describe("Game Scoring", () => {
     // Let's verify sum of points
     const decPts = countPoints(result.declarerTeam.collectedCards);
     const defPts = countPoints(result.defendingTeam.collectedCards);
-    
+
     expect(result.declarerTeam.cardPoints).toBe(decPts);
     expect(result.defendingTeam.cardPoints).toBe(defPts);
-    
+
     // Total should equal countPoints of all those 14 cards (this might not be exactly 70 because we only used a subset of deck for tricks)
     expect(result.isWin).toBe(decPts > 35);
   });
@@ -312,7 +487,10 @@ describe("Game Scoring", () => {
         plays: [
           { playerId: 2, card: { kind: "tarok" as const, rank: 2 as const, name: "ii" as const } },
           { playerId: 1, card: { kind: "tarok" as const, rank: 3 as const, name: "iii" as const } },
-          { playerId: 3, card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const } },
+          {
+            playerId: 3,
+            card: { kind: "tarok" as const, rank: 4 as const, name: "iiii" as const },
+          },
           { playerId: 0, card: { kind: "tarok" as const, rank: 5 as const, name: "v" as const } },
         ],
       },
@@ -406,9 +584,7 @@ describe("Game Scoring", () => {
     const withMond: GameState = {
       ...state,
       talon: [mond, ...state.talon.slice(1)],
-      discardedCards: state.discardedCards.filter(
-        (c) => !(c.kind === "tarok" && c.rank === 21),
-      ),
+      discardedCards: state.discardedCards.filter((c) => !(c.kind === "tarok" && c.rank === 21)),
       remainingTalonToDeclarer: true,
     };
     // Uncollected includes mond (not in discarded, not in tricks from mock subset)

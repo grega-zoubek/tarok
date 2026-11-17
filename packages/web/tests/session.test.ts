@@ -47,9 +47,7 @@ describe("shranjevanje seje", () => {
   });
 
   it("zapolni manjkajoča polja z varnimi privzetki", () => {
-    const restored = parseSession(
-      JSON.stringify({ settings, round: 1 }),
-    );
+    const restored = parseSession(JSON.stringify({ settings, round: 1 }));
 
     expect(restored).not.toBeNull();
     expect(restored?.history).toEqual([]);
@@ -83,10 +81,8 @@ describe("shranjevanje seje", () => {
   });
 
   it("zavrže neveljavno stanje igre", () => {
-    const restored = parseSession(
-      JSON.stringify({ settings, round: 1, state: { foo: "bar" } }),
-    );
+    const restored = parseSession(JSON.stringify({ settings, round: 1, state: { foo: "bar" } }));
 
-    expect(restored?.state).toBeNull();
+    expect(restored).toBeNull();
   });
 });

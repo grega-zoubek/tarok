@@ -7,12 +7,20 @@ export interface Rng {
  * Creates a deterministic pseudo-random number generator from a numeric seed.
  * Uses a mulberry32 algorithm suitable for shuffling and simulations.
  */
-export function createSeededRng(seed: number): Rng {
+export interface StatefulRng extends Rng {
+  /** Serializable uint32 state; pass it as the seed to resume the sequence. */
+  getState(): number;
+}
+
+export function createSeededRng(seed: number): StatefulRng {
   let state = seed >>> 0;
 
   return {
+    getState(): number {
+      return state >>> 0;
+    },
     next(): number {
-      state += 0x6d2b79f5;
+      state = (state + 0x6d2b79f5) >>> 0;
       let t = state;
       t = Math.imul(t ^ (t >>> 15), t | 1);
       t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
