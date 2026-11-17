@@ -45,6 +45,17 @@ describe("Talon Exchange", () => {
       expect(round.pickedGroupIndex).toBe(1);
     });
 
+    it.each([-1, 0.5, NaN, Infinity, 2])("rejects invalid group index %s", (index) => {
+      expect(() => pickTalonGroup(createTalonExchange(0, mockTalon, 3), 0, index)).toThrow();
+    });
+
+    it("rejects duplicate physical cards in a discard", () => {
+      const card = mockTalon[1]!;
+      expect(isLegalDiscard([card, { ...card }], [card])).toBe(false);
+      const round = pickTalonGroup(createTalonExchange(0, mockTalon, 2), 0, 0);
+      expect(() => discardCards(round, 0, [card, card], [card])).toThrow();
+    });
+
     it("throws if non-declarer tries to pick", () => {
       const round = createTalonExchange(1, mockTalon, 3);
       expect(() => pickTalonGroup(round, 0, 1)).toThrowError();
@@ -65,8 +76,8 @@ describe("Talon Exchange", () => {
             { kind: "suit", suit: "hearts", rank: "queen" },
             { kind: "suit", suit: "spades", rank: "cavalier" },
           ],
-          hand
-        )
+          hand,
+        ),
       ).toBe(true);
 
       // Illegal: discarding a 5-point card (King)
@@ -76,8 +87,8 @@ describe("Talon Exchange", () => {
             { kind: "suit", suit: "hearts", rank: "queen" },
             { kind: "suit", suit: "hearts", rank: "king" },
           ],
-          hand
-        )
+          hand,
+        ),
       ).toBe(false);
 
       // Illegal: discarding a tarok while holding suit cards
@@ -87,8 +98,8 @@ describe("Talon Exchange", () => {
             { kind: "suit", suit: "hearts", rank: "queen" },
             { kind: "tarok", rank: 10, name: "x" },
           ],
-          hand
-        )
+          hand,
+        ),
       ).toBe(false);
     });
 
@@ -107,8 +118,8 @@ describe("Talon Exchange", () => {
             { kind: "suit", suit: "hearts", rank: "queen" },
             { kind: "tarok", rank: 10, name: "x" },
           ],
-          forcedHand
-        )
+          forcedHand,
+        ),
       ).toBe(true);
     });
 

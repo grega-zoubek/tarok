@@ -19,45 +19,48 @@ import type { AnnouncementType } from "../announcements/announcements.js";
 //  valat                    500
 // ─────────────────────────────────────────────────────────────────────────────
 export const CONTRACT_BASE_VALUES: Record<Bid | "klop", number> = {
-  tri:          10,
-  dve:          20,
-  ena:          30,
-  solo_tri:     40,
-  solo_dve:     50,
-  solo_ena:     60,
-  solo_brez:    80,
-  berac:        70,
-  klop:         70,
+  tri: 10,
+  dve: 20,
+  ena: 30,
+  solo_tri: 40,
+  solo_dve: 50,
+  solo_ena: 60,
+  solo_brez: 80,
+  berac: 70,
+  klop: 70,
   odprti_berac: 90,
   barvni_valat: 125,
-  valat:        500,
+  valat: 500,
 };
-
-// Stara oznaka ohranjena za združljivost
-export const CONTRACT_VALUES = CONTRACT_BASE_VALUES;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vrednosti bonusov — tiha vrednost (napovedana = 2×)
 // ─────────────────────────────────────────────────────────────────────────────
 export const BONUS_BASE_VALUES: Record<AnnouncementType, number> = {
-  trula:        10,
-  kralji:       10,
+  trula: 10,
+  kralji: 10,
   pagat_ultimo: 25,
   kralj_ultimo: 10,
-  valat:        250,
+  valat: 250,
 };
-
-// Stara oznaka ohranjena za združljivost
-export const ANNOUNCEMENT_VALUES = BONUS_BASE_VALUES;
 
 /** Igre, ki dajo vsakemu igralcu +1 radlc po koncu igre */
 export const RADLC_AWARDING_CONTRACTS = new Set<Bid | "klop">([
-  "klop", "berac", "odprti_berac", "barvni_valat", "valat",
+  "klop",
+  "berac",
+  "odprti_berac",
+  "barvni_valat",
+  "valat",
 ]);
 
 /** Igre brez razlike (samo osnovna vrednost, brez +/- točk kart) */
 export const NO_DIFFERENCE_CONTRACTS = new Set<Bid | "klop">([
-  "solo_brez", "berac", "klop", "odprti_berac", "barvni_valat", "valat",
+  "solo_brez",
+  "berac",
+  "klop",
+  "odprti_berac",
+  "barvni_valat",
+  "valat",
 ]);
 
 export interface BonusResult {
@@ -66,8 +69,6 @@ export interface BonusResult {
   readonly achieved: boolean;
   /** + pomeni dobiček za aktivno ekipo, − pomeni izgubo */
   readonly value: number;
-  /** @deprecated Uporabi value */
-  readonly radlci: number;
 }
 
 export interface TeamScoreResult {
@@ -75,8 +76,6 @@ export interface TeamScoreResult {
   readonly wonTrula: boolean;
   readonly wonKings: boolean;
   readonly collectedCards: readonly Card[];
-  /** @deprecated Uporabi wonTrula / wonKings */
-  readonly wonBonuses: { readonly trula: boolean; readonly kings: boolean };
 }
 
 export interface GameScoreResult {
@@ -87,13 +86,9 @@ export interface GameScoreResult {
 
   /** Zaokrožena razlika točk (koraki po 5); 0 za igre brez razlike */
   readonly razlika: number;
-  /** @deprecated Uporabi razlika */
-  readonly pointDifference: number;
 
   /** Vrednost pogodbe z razliko in predznakom (+ zmaga, − poraz) */
   readonly contractValue: number;
-  /** @deprecated Uporabi contractValue */
-  readonly contractRadlci: number;
 
   /** Skupna vrednost vseh bonusov */
   readonly bonusValue: number;
@@ -107,8 +102,6 @@ export interface GameScoreResult {
 
   /** Skupaj pred upoštevanjem radlcev (contractValue + bonusValue) */
   readonly totalBeforeRadlci: number;
-  /** @deprecated Uporabi totalBeforeRadlci */
-  readonly totalRadlci: number;
 
   /** Novi radlci, ki jih dobi vsak aktivni igralec (+1 za klop/berač/valat tip) */
   readonly newRadlciEarned: number;
@@ -120,13 +113,12 @@ export interface GameScoreResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zaokroži navzdol na najbližji večkratnik 5
-// Pravilo: cifra 8,9,0,1,2 → zaokroži na 0; cifra 3,4,5,6,7 → zaokroži na 5
+// Zaokroži na najbližji večkratnik 5 (pravilo: "pike zaokrožimo na 5").
 // Primer: 49 → 50,  47 → 45,  43 → 45,  41 → 40,  55 → 55,  57 → 55
 // ─────────────────────────────────────────────────────────────────────────────
-function roundToNearest5(n: number): number {
-    return Math.round(n / 5) * 5;
-  }
+export function roundToNearest5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
 
 /**
  * Aplikacija radlcev: vsak radlc podvoji vrednost igre.
@@ -171,7 +163,7 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const playerCollectedCards: Record<PlayerId, Card[]> = {};
   for (const playerId of state.playerOrder) playerCollectedCards[playerId] = [];
   for (const ct of trickRound.capturedTricks) {
-    ct.trick.plays.forEach(p => playerCollectedCards[ct.winner]?.push(p.card));
+    ct.trick.plays.forEach((p) => playerCollectedCards[ct.winner]?.push(p.card));
   }
 
   const declarerCollected: Card[] = [...discardedCards];
@@ -189,11 +181,8 @@ export function calculateGameScore(state: GameState): GameScoreResult {
 
   // Preostanek talona: privzeto branilcem; če je deklarant s klicanim kraljem
   // iz talona pobral štih, gre preostanek njemu.
-  const accountedKeys = new Set([
-    ...declarerCollected,
-    ...defendingCollected,
-  ].map(cardKey));
-  const uncollectedCards = state.talon.filter(c => !accountedKeys.has(cardKey(c)));
+  const accountedKeys = new Set([...declarerCollected, ...defendingCollected].map(cardKey));
+  const uncollectedCards = state.talon.filter((c) => !accountedKeys.has(cardKey(c)));
   if (state.remainingTalonToDeclarer) {
     declarerCollected.push(...uncollectedCards);
   } else {
@@ -215,7 +204,7 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   // Valat / barvni valat: zmaga = aktivni pobere vse štihe
   // Ostale igre: >35 točk (≥36) IN aktivna ekipa ima vsaj 1 štih
   //   ("35 točk in ena karta" / stevec-taroka — aktivna ekipa)
-  const teamTricks = trickRound.capturedTricks.filter(t => declarerTeamIds.has(t.winner)).length;
+  const teamTricks = trickRound.capturedTricks.filter((t) => declarerTeamIds.has(t.winner)).length;
   let isWin: boolean;
   if (contract === "berac" || contract === "odprti_berac") {
     isWin = teamTricks === 0;
@@ -231,79 +220,72 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   // Razlika = roundDown5(točke aktivne ekipe) − 35
   // Primer: 41 točk → 40 − 35 = +5;  28 točk → 25 − 35 = −10
   const hasDifference = !NO_DIFFERENCE_CONTRACTS.has(contract);
-  const razlika = hasDifference ? (roundToNearest5(declarerPoints) - 35) : 0;
+  const razlika = hasDifference ? roundToNearest5(declarerPoints) - 35 : 0;
 
   // ── 5. Vrednost pogodbe (× gameMultiplier iz kontre) ─────────────────────
   // Napovedani valat nadomesti normalno točkovanje igre (pogodba = 0).
   const gameMultiplier = state.announcementsRound?.gameMultiplier ?? 1;
   const contractBase = CONTRACT_BASE_VALUES[contract];
-  let contractValue =
-    ((isWin ? contractBase : -contractBase) + razlika) * gameMultiplier;
+  let contractValue = ((isWin ? contractBase : -contractBase) + razlika) * gameMultiplier;
 
   // ── 6. Bonusi ────────────────────────────────────────────────────────────
   const bonuses: BonusResult[] = [];
   const announcements = state.announcementsRound?.announcements ?? {};
   const announcedByDeclarer = new Set<AnnouncementType>();
   const announcedByDefenders = new Set<AnnouncementType>();
-  const announcementMultipliers = new Map<AnnouncementType, number>();
+  const announcementMultipliers = new Map<string, number>();
 
   for (const [pidStr, playerAnns] of Object.entries(announcements)) {
     const pid = Number(pidStr) as PlayerId;
     for (const ann of playerAnns) {
       (declarerTeamIds.has(pid) ? announcedByDeclarer : announcedByDefenders).add(ann.type);
+      const key = `${declarerTeamIds.has(pid) ? "declarer" : "defenders"}:${ann.type}`;
       announcementMultipliers.set(
-        ann.type,
-        Math.max(announcementMultipliers.get(ann.type) ?? 1, ann.multiplierLevel),
+        key,
+        Math.max(announcementMultipliers.get(key) ?? 1, ann.multiplierLevel),
       );
     }
   }
 
-  function evalBonus(type: AnnouncementType, achievedByDeclarer: boolean): void {
+  function evalBonus(
+    type: AnnouncementType,
+    achievedByDeclarer: boolean,
+    achievedByDefenders: boolean,
+    silentFailure = false,
+  ): void {
     const base = BONUS_BASE_VALUES[type];
-    const decAnn = announcedByDeclarer.has(type);
-    const defAnn = announcedByDefenders.has(type);
-    // multiplierLevel: 1=napoved (2×base), 2=kontra (4×base), 4=rekontra (8×base), …
-    const contraMult = announcementMultipliers.get(type) ?? 1;
-
-    let v: number;
-    let announcedBy: BonusResult["announcedBy"];
-    let achieved: boolean;
-
-    if (achievedByDeclarer) {
-      achieved = true;
-      if (decAnn) {
-        announcedBy = "declarer";
-        v = base * 2 * contraMult;
-      } else if (defAnn) {
-        announcedBy = "defenders";
-        v = base * 2 * contraMult;
-        achieved = false;
-      } else {
-        announcedBy = "silent";
-        v = base;
-      }
-    } else {
-      achieved = false;
-      if (defAnn) {
-        announcedBy = "defenders";
-        v = -(base * 2 * contraMult);
-        achieved = true;
-      } else if (decAnn) {
-        announcedBy = "declarer";
-        v = -(base * 2 * contraMult);
-      } else {
-        announcedBy = "silent";
-        v = -base;
-      }
+    // Failure by one side does not imply achievement by the other side.
+    // Evaluate each announcement separately, including opposed announcements.
+    let announced = false;
+    for (const side of ["declarer", "defenders"] as const) {
+      const hasAnnouncement =
+        side === "declarer" ? announcedByDeclarer.has(type) : announcedByDefenders.has(type);
+      if (!hasAnnouncement) continue;
+      announced = true;
+      const multiplier = announcementMultipliers.get(`${side}:${type}`) ?? 1;
+      const achieved = side === "declarer" ? achievedByDeclarer : achievedByDefenders;
+      const sign = (side === "declarer" ? 1 : -1) * (achieved ? 1 : -1);
+      bonuses.push({ type, announcedBy: side, achieved, value: sign * base * 2 * multiplier });
     }
-    bonuses.push({ type, announcedBy, achieved, value: v, radlci: v });
+    if (!announced && (achievedByDeclarer || achievedByDefenders || silentFailure)) {
+      bonuses.push({
+        type,
+        announcedBy: "silent",
+        achieved: achievedByDeclarer || achievedByDefenders,
+        value: achievedByDeclarer ? base : -base,
+      });
+    }
   }
 
   // Pogodbe pri katerih se trula in kralji NE štejejo
   // (berač, odprti berač, valat, barvni valat, solo brez)
-  const noTrulaKings = new Set<Bid | "klop">(
-    ["berac", "odprti_berac", "valat", "barvni_valat", "solo_brez"]
-  );
+  const noTrulaKings = new Set<Bid | "klop">([
+    "berac",
+    "odprti_berac",
+    "valat",
+    "barvni_valat",
+    "solo_brez",
+  ]);
 
   // Trula in kralji: samo za navadne pogodbe (tri/dve/ena/solo_tri/solo_dve/solo_ena)
   if (!noTrulaKings.has(contract)) {
@@ -313,7 +295,7 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     //   - RAZDELJENA (1 ali 2 pri eni ekipi) → 0, RAZEN če je bila napovedana
     const trulaAnnounced = announcedByDeclarer.has("trula") || announcedByDefenders.has("trula");
     if (declarerWonTrula || defendingWonTrula || trulaAnnounced) {
-      evalBonus("trula", declarerWonTrula);
+      evalBonus("trula", declarerWonTrula, defendingWonTrula);
     }
 
     // Enako za kralje (vsi 4 kralji):
@@ -322,22 +304,31 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     //   - RAZDELJENA              → 0, RAZEN če napovedana
     const kraljiAnnounced = announcedByDeclarer.has("kralji") || announcedByDefenders.has("kralji");
     if (declarerWonKings || defendingWonKings || kraljiAnnounced) {
-      evalBonus("kralji", declarerWonKings);
+      evalBonus("kralji", declarerWonKings, defendingWonKings);
     }
   }
 
   // Pagat ultimo: preverimo zadnji štih
   const lastTrick = trickRound.capturedTricks[trickRound.capturedTricks.length - 1];
   if (lastTrick) {
-    const pagatPlay = lastTrick.trick.plays.find(p => isTarokCard(p.card) && p.card.rank === 1);
+    const pagatPlay = lastTrick.trick.plays.find((p) => isTarokCard(p.card) && p.card.rank === 1);
     const pagatInLast = pagatPlay !== undefined;
     // Pagat ultimo: pagat mora biti v zadnjem štihu IN mora biti tisti, ki ga je vrgel, tudi zmagovalec
-    const pagatUltimoAchievedByDeclarer = pagatInLast
-      && declarerTeamIds.has(lastTrick.winner)
-      && pagatPlay!.playerId === lastTrick.winner;
+    const pagatUltimoAchievedByDeclarer =
+      pagatInLast &&
+      declarerTeamIds.has(lastTrick.winner) &&
+      pagatPlay!.playerId === lastTrick.winner;
 
-    if (pagatInLast || announcedByDeclarer.has("pagat_ultimo") || announcedByDefenders.has("pagat_ultimo")) {
-      evalBonus("pagat_ultimo", pagatUltimoAchievedByDeclarer);
+    if (
+      pagatInLast ||
+      announcedByDeclarer.has("pagat_ultimo") ||
+      announcedByDefenders.has("pagat_ultimo")
+    ) {
+      const achievedByDefenders =
+        pagatInLast &&
+        !declarerTeamIds.has(lastTrick.winner) &&
+        pagatPlay!.playerId === lastTrick.winner;
+      evalBonus("pagat_ultimo", pagatUltimoAchievedByDeclarer, achievedByDefenders, pagatInLast);
     }
 
     // Kralj ultimo: tiho 10 / napovedano 20 (stevec)
@@ -348,28 +339,36 @@ export function calculateGameScore(state: GameState): GameScoreResult {
       return true;
     });
     const kingInLast = kingPlay !== undefined;
-    const kingUltimoByDeclarer = kingInLast
-      && declarerTeamIds.has(lastTrick.winner)
-      && kingPlay!.playerId === lastTrick.winner;
+    const kingUltimoByDeclarer =
+      kingInLast &&
+      declarerTeamIds.has(kingPlay!.playerId) &&
+      declarerTeamIds.has(lastTrick.winner);
+    const kingUltimoByDefenders =
+      kingInLast &&
+      !declarerTeamIds.has(kingPlay!.playerId) &&
+      !declarerTeamIds.has(lastTrick.winner);
     if (
       kingInLast ||
       announcedByDeclarer.has("kralj_ultimo") ||
       announcedByDefenders.has("kralj_ultimo")
     ) {
-      evalBonus("kralj_ultimo", kingUltimoByDeclarer);
+      evalBonus("kralj_ultimo", kingUltimoByDeclarer, kingUltimoByDefenders, kingInLast);
     }
   }
 
   // Valat: tiho 250 / napovedano 500. Napovedani valat nadomesti pogodbo.
   // Pri pogodbah valat/barvni_valat se bonus ne podvaja (pogodba že šteje).
-  const valatAnnounced =
-    announcedByDeclarer.has("valat") || announcedByDefenders.has("valat");
+  const valatAnnounced = announcedByDeclarer.has("valat") || announcedByDefenders.has("valat");
   const declarerWonAll =
     trickRound.capturedTricks.length > 0 &&
     trickRound.capturedTricks.every((t) => declarerTeamIds.has(t.winner));
   const isValatContract = contract === "valat" || contract === "barvni_valat";
   if (!isValatContract && (declarerWonAll || valatAnnounced)) {
-    evalBonus("valat", declarerWonAll);
+    evalBonus(
+      "valat",
+      declarerWonAll,
+      trickRound.capturedTricks.every((t) => !declarerTeamIds.has(t.winner)),
+    );
   }
   if (valatAnnounced && !isValatContract) {
     contractValue = 0;
@@ -378,9 +377,15 @@ export function calculateGameScore(state: GameState): GameScoreResult {
   const bonusValue = bonuses.reduce((s, b) => s + b.value, 0);
 
   // ── 7. Mondfang (−21, NE podvoji se z radlci) ────────────────────────────
-  const mondfangContracts = new Set<Bid | "klop">(
-    ["tri", "dve", "ena", "solo_tri", "solo_dve", "solo_ena", "solo_brez"]
-  );
+  const mondfangContracts = new Set<Bid | "klop">([
+    "tri",
+    "dve",
+    "ena",
+    "solo_tri",
+    "solo_dve",
+    "solo_ena",
+    "solo_brez",
+  ]);
   let mondfang = 0;
   let mondfangPlayerId: number | undefined = undefined;
 
@@ -388,10 +393,10 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     // 1. Primer: Mond je ostal v nepobrani skupini talona → pasivna ekipa
     // Če pa gre preostanek kasneje deklarantu (remainingTalonToDeclarer), mond
     // ni bil "izgubljen" za pasivno ekipo.
-    const mondInTalon = state.talon.find(c => isTarokCard(c) && c.rank === 21);
+    const mondInTalon = state.talon.find((c) => isTarokCard(c) && c.rank === 21);
     if (mondInTalon) {
-      const mondPicked = state.discardedCards.some(c => isTarokCard(c) && c.rank === 21);
-      const mondInUncollected = uncollectedCards.some(c => isTarokCard(c) && c.rank === 21);
+      const mondPicked = state.discardedCards.some((c) => isTarokCard(c) && c.rank === 21);
+      const mondInUncollected = uncollectedCards.some((c) => isTarokCard(c) && c.rank === 21);
       if (!mondPicked && mondInUncollected && !state.remainingTalonToDeclarer) {
         mondfang = -21;
         mondfangPlayerId = state.declarer;
@@ -401,7 +406,7 @@ export function calculateGameScore(state: GameState): GameScoreResult {
     // 2. Primer: Igralec je igral monda, a ni zmagal štiha (če ni bilo v talonu)
     if (mondfang === 0) {
       for (const ct of trickRound.capturedTricks) {
-        const mondPlay = ct.trick.plays.find(p => isTarokCard(p.card) && p.card.rank === 21);
+        const mondPlay = ct.trick.plays.find((p) => isTarokCard(p.card) && p.card.rank === 21);
         if (mondPlay && mondPlay.playerId !== ct.winner) {
           // Igralec mondPlay.playerId je vrgel monda, zmagal je ct.winner (škis)
           mondfang = -21;
@@ -422,27 +427,22 @@ export function calculateGameScore(state: GameState): GameScoreResult {
       wonTrula: declarerWonTrula,
       wonKings: declarerWonKings,
       collectedCards: declarerCollected,
-      wonBonuses: { trula: declarerWonTrula, kings: declarerWonKings },
     },
     defendingTeam: {
       cardPoints: defendingPoints,
       wonTrula: defendingWonTrula,
       wonKings: defendingWonKings,
       collectedCards: defendingCollected,
-      wonBonuses: { trula: defendingWonTrula, kings: defendingWonKings },
     },
     uncollectedCards,
     isWin,
     razlika,
-    pointDifference: razlika,
     contractValue,
-    contractRadlci: contractValue,
     bonusValue,
     mondfang,
     mondfangPlayerId,
     bonuses,
     totalBeforeRadlci,
-    totalRadlci: totalBeforeRadlci,
     newRadlciEarned,
   };
 }
@@ -457,7 +457,7 @@ function calculateKlopScore(state: GameState): GameScoreResult {
   const playerCards: Record<number, Card[]> = {};
   for (const pid of state.playerOrder) playerCards[pid] = [];
   for (const ct of trickRound.capturedTricks) {
-    ct.trick.plays.forEach(p => playerCards[ct.winner]?.push(p.card));
+    ct.trick.plays.forEach((p) => playerCards[ct.winner]?.push(p.card));
   }
 
   // Talon karte: prvih 6 štihov dobi vsak po eno karto iz talona.
@@ -476,12 +476,14 @@ function calculateKlopScore(state: GameState): GameScoreResult {
   }
 
   // Zmagovalec klopa = tisti, ki ni vzel niti enega štiha (in torej nobene talon karte)
-  const winners = state.playerOrder.filter(pid => (playerCards[pid]?.length ?? 0) === 0);
-  const losers  = state.playerOrder.filter(pid => (playerPoints[pid] ?? 0) > 35);
+  const winners = state.playerOrder.filter((pid) => (playerCards[pid]?.length ?? 0) === 0);
+  const losers = state.playerOrder.filter((pid) => (playerPoints[pid] ?? 0) > 35);
 
   const empty: TeamScoreResult = {
-    cardPoints: 0, wonTrula: false, wonKings: false,
-    collectedCards: [], wonBonuses: { trula: false, kings: false },
+    cardPoints: 0,
+    wonTrula: false,
+    wonKings: false,
+    collectedCards: [],
   };
 
   return {
@@ -490,15 +492,14 @@ function calculateKlopScore(state: GameState): GameScoreResult {
     uncollectedCards: [],
     isWin: winners.length > 0,
     razlika: 0,
-    pointDifference: 0,
     contractValue: 0,
-    contractRadlci: 0,
     bonusValue: 0,
     mondfang: 0,
     bonuses: [],
     totalBeforeRadlci: 0,
-    totalRadlci: 0,
-    newRadlciEarned: 0,
+    // Klop vsem igralcem prinese nov radlc (stevec-taroka.si: "Če se je igralo
+    // igro klop ... dobi vsak igralec en dodaten radlc").
+    newRadlciEarned: 1,
     mondfangPlayerId: undefined,
     klopPlayerPoints: playerPoints,
     klopWinners: winners,

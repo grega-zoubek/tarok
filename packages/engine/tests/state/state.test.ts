@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { createInitialGameState, dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard, dispatchPlay } from "../../src/state/state.js";
+import {
+  createInitialGameState,
+  dispatchBid,
+  dispatchCall,
+  dispatchTalonPick,
+  dispatchDiscard,
+} from "../../src/state/state.js";
 import { createTarokDeck } from "../../src/cards/deck.js";
 import { PASS } from "../../src/bidding/bidding.js";
 
@@ -42,7 +48,7 @@ describe("Game State Transitions", () => {
 
   it("transitions to calling phase after a 3/2/1 contract is won", () => {
     let state = setupMockGame();
-    
+
     state = dispatchBid(state, 0, "tri");
     state = dispatchBid(state, 1, PASS);
     state = dispatchBid(state, 2, PASS);
@@ -56,7 +62,7 @@ describe("Game State Transitions", () => {
 
   it("skips calling phase for solo games and goes directly to talon", () => {
     let state = setupMockGame();
-    
+
     state = dispatchBid(state, 0, "solo_tri");
     state = dispatchBid(state, 1, PASS);
     state = dispatchBid(state, 2, PASS);
@@ -68,9 +74,22 @@ describe("Game State Transitions", () => {
     expect(state.currentPlayer).toBe(0); // declarer must pick talon
   });
 
+  it("rejects repeated talon picks without changing the hand", () => {
+    let state = setupMockGame();
+    state = dispatchBid(state, 0, "solo_tri");
+    for (const pid of [1, 2, 3]) state = dispatchBid(state, pid, PASS);
+    state = dispatchTalonPick(state, 0, 0);
+    expect(state.hands[0]).toHaveLength(15);
+    expect(() => dispatchTalonPick(state, 0, 0)).toThrow("already been picked");
+    expect(() => dispatchTalonPick(state, 0, 1)).toThrow("already been picked");
+    const card = state.hands[0]!.find((c) => c.kind === "suit" && c.rank !== "king")!;
+    expect(() => dispatchDiscard(state, 0, [card, card, card])).toThrow();
+    expect(state.hands[0]).toHaveLength(15);
+  });
+
   it("handles calling a king and transitions to talon", () => {
     let state = setupMockGame();
-    
+
     // Win bid
     state = dispatchBid(state, 0, "tri");
     state = dispatchBid(state, 1, PASS);

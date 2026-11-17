@@ -9,12 +9,25 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  createTarokDeck, shuffle, deal, createInitialGameState, createSeededRng,
-  dispatchBid, dispatchCall, dispatchTalonPick, dispatchDiscard,
+  createTarokDeck,
+  shuffle,
+  deal,
+  createInitialGameState,
+  createSeededRng,
+  dispatchBid,
+  dispatchCall,
+  dispatchTalonPick,
+  dispatchDiscard,
   dispatchRaiseToBarvniValat,
-  dispatchAnnouncementPass, dispatchPlay, PASS, isLegalBid,
-  calculateGameScore, applyRadlci, countPoints,
-  type Bid, type GameState, type PlayerId,
+  dispatchAnnouncementPass,
+  dispatchPlay,
+  PASS,
+  isLegalBid,
+  calculateGameScore,
+  settleGame,
+  type Bid,
+  type GameState,
+  type PlayerId,
 } from "../../src/index.js";
 import { HeuristicBot } from "../../../ai/src/bot/heuristic-bot.js";
 
@@ -111,7 +124,7 @@ function playOneGame(seed: number, forehand: PlayerId): GameState {
       }
 
       case "playing": {
-        const hand = state.trickRound?.hands.find(h => h.playerId === pid)?.cards ?? [];
+        const hand = state.trickRound?.hands.find((h) => h.playerId === pid)?.cards ?? [];
         const card = bot.choosePlay(state, hand);
         state = dispatchPlay(state, pid, card);
         break;
@@ -148,7 +161,10 @@ describe("QA: 8 zaporednih iger", () => {
       if (finalState.contract !== "klop" && finalState.trickRound) {
         const score2 = calculateGameScore(finalState);
         const totalPoints = score2.declarerTeam.cardPoints + score2.defendingTeam.cardPoints;
-        expect(totalPoints, `Skupne točke (${score2.declarerTeam.cardPoints} + ${score2.defendingTeam.cardPoints}) niso 70`).toBe(70);
+        expect(
+          totalPoints,
+          `Skupne točke (${score2.declarerTeam.cardPoints} + ${score2.defendingTeam.cardPoints}) niso 70`,
+        ).toBe(70);
       }
 
       // ── 3. Štetje ne sme vreči napake ────────────────────────────────────
@@ -163,46 +179,21 @@ describe("QA: 8 zaporednih iger", () => {
       if (finalState.contract !== "klop") {
         expect(
           score.totalBeforeRadlci,
-          "totalBeforeRadlci ne ustreza vsoti contractValue + bonusValue"
+          "totalBeforeRadlci ne ustreza vsoti contractValue + bonusValue",
         ).toBe(score.contractValue + score.bonusValue);
 
         // Razlika mora biti večkratnik 5
-        expect(
-          Math.abs(score.razlika % 5),
-          `Razlika ${score.razlika} ni večkratnik 5`
-        ).toBe(0);
+        expect(Math.abs(score.razlika % 5), `Razlika ${score.razlika} ni večkratnik 5`).toBe(0);
       }
 
-      // ── 5. Radlci: applyRadlci mora biti konsistenten ─────────────────────
-      if (finalState.contract !== "klop") {
-        const declarerTeam = finalState.teams?.declarerTeam ?? [];
-        const declarerMaxRadlci = declarerTeam.reduce(
-          (m, pid) => Math.max(m, playerRadlci[pid] ?? 0), 0
-        );
-        const applied = applyRadlci(score.totalBeforeRadlci, declarerMaxRadlci);
-        expect(
-          typeof applied.finalValue,
-          "applyRadlci mora vrniti število"
-        ).toBe("number");
-        expect(
-          isFinite(applied.finalValue),
-          "applyRadlci je vrnil Infinity/NaN"
-        ).toBe(true);
-
-        // Posodobi radlce (simulacija hook logike)
-        for (let i = 0; i < 4; i++) {
-          playerRadlci[i] = (playerRadlci[i] ?? 0) + score.newRadlciEarned;
-        }
-        if (score.isWin && applied.radlciUsed > 0) {
-          for (const pid of declarerTeam) {
-            playerRadlci[pid] = 0;
-          }
-        }
-      } else {
-        // Klop: +1 radlc vsem
-        for (let i = 0; i < 4; i++) {
-          playerRadlci[i] = (playerRadlci[i] ?? 0) + 1;
-        }
+      // ── 5. Uporabimo isti obračun kot aplikacija, brez podvojene logike ──
+      const settlement = settleGame(finalState, {
+        radlci: Object.fromEntries(playerRadlci.map((r, pid) => [pid, r])),
+      });
+      expect(Number.isFinite(settlement.finalValue)).toBe(true);
+      for (const pid of finalState.playerOrder) {
+        expect(Number.isFinite(settlement.perPlayerDelta[pid])).toBe(true);
+        playerRadlci[pid] = settlement.radlciAfter[pid]!;
       }
 
       // ── 6. Radlci nikoli ne smejo biti negativni ──────────────────────────
@@ -212,8 +203,8 @@ describe("QA: 8 zaporednih iger", () => {
 
       console.log(
         `  Igra ${roundIndex + 1}: ${finalState.contract ?? "klop"} | ` +
-        `zmaga=${score?.isWin} | razlika=${score?.razlika} | ` +
-        `vrednost=${score?.totalBeforeRadlci} | radlci=${JSON.stringify(playerRadlci)}`
+          `zmaga=${score?.isWin} | razlika=${score?.razlika} | ` +
+          `vrednost=${score?.totalBeforeRadlci} | radlci=${JSON.stringify(playerRadlci)}`,
       );
     });
   });
@@ -226,7 +217,10 @@ describe("QA: 8 zaporednih iger", () => {
       const state = playOneGame(seed, 2 as PlayerId);
       expect(state.phase).toBe("finished");
       // Če je bila solo pogodba, preverimo da je bila score izračunana
-      if (state.contract && ["solo_tri","solo_dve","solo_ena","berac","odprti_berac"].includes(state.contract)) {
+      if (
+        state.contract &&
+        ["solo_tri", "solo_dve", "solo_ena", "berac", "odprti_berac"].includes(state.contract)
+      ) {
         expect(() => calculateGameScore(state)).not.toThrow();
         const score = calculateGameScore(state);
         expect(score.declarerTeam.cardPoints + score.defendingTeam.cardPoints).toBe(70);

@@ -30,7 +30,7 @@ export interface ResolvedTrick {
 }
 
 /** A resolved trick retained for later card-point and bonus calculation. */
-export interface CapturedTrick extends ResolvedTrick {}
+export type CapturedTrick = ResolvedTrick;
 
 export interface TrickRoundConfig {
   readonly playerOrder: readonly PlayerId[];

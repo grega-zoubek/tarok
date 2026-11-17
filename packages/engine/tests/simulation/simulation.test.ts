@@ -1,3 +1,4 @@
+/* eslint-disable no-case-declarations */
 import { describe, it, expect } from "vitest";
 import { 
   createTarokDeck, shuffle, deal, createInitialGameState, createSeededRng,

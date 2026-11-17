@@ -1,4 +1,4 @@
-import { type Card, isTarokCard, cardsEqual, isSuitCard } from "../cards/card.js";
+import { type Card, isTarokCard, cardsEqual, isSuitCard, cardKey } from "../cards/card.js";
 import { type PlayerId } from "../bidding/bidding.js";
 
 export interface TalonExchangeRound {
@@ -15,7 +15,7 @@ export interface TalonExchangeRound {
 export function createTalonExchange(
   declarer: PlayerId,
   talon: readonly Card[],
-  exchangeCount: 3 | 2 | 1
+  exchangeCount: 3 | 2 | 1,
 ): TalonExchangeRound {
   if (talon.length !== 6) {
     throw new Error("Talon must contain exactly 6 cards");
@@ -41,7 +41,7 @@ export function createTalonExchange(
 export function pickTalonGroup(
   round: TalonExchangeRound,
   playerId: PlayerId,
-  groupIndex: number
+  groupIndex: number,
 ): TalonExchangeRound {
   if (round.isFinished) {
     throw new Error("Talon exchange is already finished");
@@ -51,7 +51,7 @@ export function pickTalonGroup(
     throw new Error(`Only declarer ${round.declarer} can pick a talon group`);
   }
 
-  if (groupIndex < 0 || groupIndex >= round.talonGroups.length) {
+  if (!Number.isInteger(groupIndex) || groupIndex < 0 || groupIndex >= round.talonGroups.length) {
     throw new Error(`Invalid talon group index: ${groupIndex}`);
   }
 
@@ -66,12 +66,16 @@ export function pickTalonGroup(
 }
 
 export function isLegalDiscard(discardedCards: readonly Card[], hand: readonly Card[]): boolean {
+  if (new Set(discardedCards.map(cardKey)).size !== discardedCards.length) return false;
   let hasTrulaOrKings = false;
   let hasTaroks = false;
 
   for (const card of discardedCards) {
     // 5-point cards cannot be discarded (Kings, Trula)
-    if (isTarokCard(card) && (card.rank === "skis" || card.rank === 1 || (card.rank === 21 && card.name === "mond"))) {
+    if (
+      isTarokCard(card) &&
+      (card.rank === "skis" || card.rank === 1 || (card.rank === 21 && card.name === "mond"))
+    ) {
       hasTrulaOrKings = true;
     } else if (isSuitCard(card) && card.rank === "king") {
       hasTrulaOrKings = true;
@@ -80,7 +84,7 @@ export function isLegalDiscard(discardedCards: readonly Card[], hand: readonly C
     }
 
     // Ensure the card being discarded is actually in the hand
-    if (!hand.some(h => cardsEqual(h, card))) {
+    if (!hand.some((h) => cardsEqual(h, card))) {
       return false; // Cannot discard a card not in hand
     }
   }
@@ -92,12 +96,12 @@ export function isLegalDiscard(discardedCards: readonly Card[], hand: readonly C
   // A player can only discard Taroks if they have absolutely no other choice
   // i.e., they hold only Taroks, 5-pointers (Kings), or cards they want to keep but must discard to meet count
   if (hasTaroks) {
-    const handSuitCards = hand.filter(c => isSuitCard(c) && c.rank !== "king");
-    
+    const handSuitCards = hand.filter((c) => isSuitCard(c) && c.rank !== "king");
+
     // If the player still has discardable suit cards but is trying to discard a tarok, it's illegal.
     // They must exhaust all valid suit cards first.
     // E.g., if exchangeCount is 3, and handSuitCards.length is 2, they MUST discard those 2, and 1 tarok.
-    const discardSuitCount = discardedCards.filter(c => isSuitCard(c)).length;
+    const discardSuitCount = discardedCards.filter((c) => isSuitCard(c)).length;
     if (handSuitCards.length > discardSuitCount) {
       return false;
     }
@@ -106,11 +110,36 @@ export function isLegalDiscard(discardedCards: readonly Card[], hand: readonly C
   return true;
 }
 
+/**
+ * Vrne nabor kart, iz katerih lahko deklarant izbere `count` kart za založitev.
+ * Upošteva pravili: 5-točkovnih kart ni dovoljeno založiti, taroke pa le,
+ * če ni dovolj barvnih kart.
+ */
+export function getDiscardPool(hand: readonly Card[], count: number): Card[] {
+  const discardable = hand.filter((card) => {
+    if (isTarokCard(card)) {
+      return !(
+        card.rank === "skis" ||
+        card.rank === 1 ||
+        (card.rank === 21 && card.name === "mond")
+      );
+    }
+    if (isSuitCard(card)) return card.rank !== "king";
+    return false;
+  });
+
+  const suitCards = discardable.filter(isSuitCard);
+  const taroks = discardable.filter(isTarokCard);
+
+  // Dokler je dovolj barvnih kart, tarokov ni dovoljeno založiti.
+  return suitCards.length >= count ? suitCards : [...suitCards, ...taroks];
+}
+
 export function discardCards(
   round: TalonExchangeRound,
   playerId: PlayerId,
   cardsToDiscard: readonly Card[],
-  currentHand: readonly Card[] // Current hand must include the previously picked talon cards
+  currentHand: readonly Card[], // Current hand must include the previously picked talon cards
 ): TalonExchangeRound {
   if (round.isFinished) {
     throw new Error("Talon exchange is already finished");
